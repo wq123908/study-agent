@@ -1,7 +1,7 @@
 # 阶段 9 学习记录：基线修复、声明式安全工具层与全链路 Trace 底座
 
 - **目标**：修复第 8 阶段代码里的基线缺陷，将工具层重构为自动生成 Schema + Pydantic 校验 + AST 安全计算 + 并发超时控制，并建立可观测 Trace 底座。
-- **阶段状态**：⏳ 进行中（已完成 **9.1**，准备开始 **9.2**）
+- **阶段状态**：⏳ 进行中（已完成 **9.1 ～ 9.2**，准备开始 **9.3**）
 
 ---
 
@@ -10,8 +10,8 @@
 | 环节 | 主题 | 状态 | 提交 Hash |
 | :---: | :--- | :---: | :--- |
 | 9.1 | 基线止血与强类型配置 | ✅ 已完成 | `f40398e` / `7f67b7c` |
-| 9.2 | 完整消息协议模型（`ToolCallItem` / 双序列化） | ⏳ 待开始 | - |
-| 9.3 | AST 安全计算器（替代 `eval`） | ⬜ 待开始 | - |
+| 9.2 | 完整消息协议模型（`ToolCallItem` / 双序列化） | ✅ 已完成 | `study(stage-9.2)` |
+| 9.3 | AST 安全计算器（替代 `eval`） | ⏳ 待开始 | - |
 | 9.4 | 声明式工具注册表与异步并发执行器 | ⬜ 待开始 | - |
 | 9.5 | 全链路 `Trace → Span` 与结构化日志 | ⬜ 待开始 | - |
 
@@ -58,14 +58,28 @@
   - 第 3 步曾误将配置与真实 API Key 写入受 Git 追踪的 `.env.example`（已及时撤回并新建本地 `.env`），以及在 `agent/llm.py` 手敲出 `message:list[dist]` 拼写误差（已借助 `from __future__ import annotations` 差异认知与 `get_type_hints` 排查修正），也实践了 `.env` 拼写排查（`deepseek-falsh` → `deepseek-flash`）。现已完整掌握强类型配置、环境变量隔离与客户端参数透传。
 
 ## 9.2 完整消息协议模型
-- **状态**：⏳ 待开始（准备进行第 1 步）
-- **预习知识点导览**（完成后补充实操细节与踩坑记录）：
-  - **协议完整表达（`ToolCallItem` / `tool_call_id` / `reasoning_content`）**：让工具调用轨迹从临时局部变量升级为一等公民对象，支持完整持久化与推理模型思考过程回传。
-  - **双序列化隔离（`to_dict()` vs `to_record()`）**：发给大模型 API 时严格裁剪掉 `name`、`created_at`、`metadata` 等观测字段；落盘时完整保留元数据，兼顾协议合规与可审计性。
-  - **向后兼容反序列化（`from_record()`）**：兼容读取阶段 4 旧版 `memory.json`（仅含 `role` / `content`）与新版完整记录，平滑升级不丢历史数据。
-- **改动文件**：`agent/message.py`（待手敲）
+- **状态**：✅ 已完成（第 1～2 步全部验收通过）
+- **改动文件**：`agent/message.py`
+- **学习知识点详解**：
+  1. **完整协议角色与 `ToolCallItem` 结构化模型**：
+     - 补齐第四种协议角色常量 `TOOL = "tool"`，消除业务代码里的 `"tool"` 硬编码字符串。
+     - 定义 `ToolCallItem(id, name, arguments)` 表达大模型发起的每一次工具调用，其中 `arguments` 保留模型返回的原始 JSON 字符串；并通过 `to_openai_dict()` / `from_openai_dict()` 兼容嵌套 `{"function": {...}}` 与扁平字典两种输入形式。
+  2. **消息生命周期元数据字段与可变默认值隔离**：
+     - 扩展 `Message` 支持 `content: str | None = None`、`tool_calls: list[ToolCallItem]`、`tool_call_id`、`name`、`reasoning_content`、`created_at` 与 `metadata`。
+     - `tool_calls` 与 `metadata` 使用 `field(default_factory=...)` 防共享；`created_at` 使用 `field(default_factory=time.time)`（传入函数引用而非立即调用 `time.time()`），为每条消息自动记录精确创建时间戳。
+  3. **双序列化隔离（`to_dict()` 发 API vs `to_record()` 落盘）**：
+     - **`to_dict()`（做减法，严守 API 协议）**：当 `content` 为 `None`（常见于工具调用消息）时按协议转成 `""`；仅在 `assistant` 且存在 `tool_calls` 时附带 `tool_calls`（以及部分推理模型要求同一工具轮次回传的 `reasoning_content`）；仅在 `tool` 消息时附带 `tool_call_id`；严格过滤掉 `name`、`created_at`、`metadata` 等内部观测字段，避免模型接口报错。
+     - **`to_record()`（做加法，保留完整现场）**：原样保留 `content`（不把 `None` 强转为 `""`），并持久化 `name`（记录工具名称）、`created_at`（供后续 L2 摘要与时间排序使用）、`reasoning_content` 与 `metadata`；仅写入非空可选字段，保持 JSON 简洁可读。
+  4. **向后兼容反序列化（`from_record()`）**：
+     - 阶段 4 遗留的 `memory.json` 每条只有 `role` 和 `content`。使用 `raw.get("tool_calls") or []`、`raw.get("created_at") or time.time()`、`raw.get("metadata") or {}`，同时防御“键不存在”与“键值为 JSON `null`（`None`）”两种边界情况，防止列表推导式遍历 `None` 报错。
+  5. **类体内前向引用与 `from __future__ import annotations`（实操印证）**：
+     - 在 `class ToolCallItem:` 尚未执行完类体时，内部方法 `@classmethod def from_openai_dict(...) -> ToolCallItem:` 若无首行 `from __future__ import annotations` 开启注解延迟求值，会在导入阶段直接抛出 `NameError: name 'ToolCallItem' is not defined`。
 - **验收命令与结果**：
+  - 第 1 步：`python -c "import json; from agent.message import ASSISTANT, TOOL, ToolCallItem, Message; ..."` → 输出 `assistant(tool_calls)` 标准 JSON（含 `reasoning_content`）、`{"role": "tool", "content": "3", "tool_call_id": "call_1"}`（无观测字段）与 `[assistant] -> calculator({"expression": "1+2"})`
+  - 第 2 步：`python -c "import json; from agent.message import ASSISTANT, TOOL, USER, ToolCallItem, Message; ..."` → 输出 `record_keys: ['content', 'created_at', 'metadata', 'reasoning_content', 'role', 'tool_calls']`、`roundtrip_ok: True`、`legacy_ok: True`、`tool_record_has_name: calculator`
 - **掌握情况与踩坑记录**：
+  - 第 1 步手敲时漏写首行 `from __future__ import annotations` 导致 `ToolCallItem.from_openai_dict` 返回值注解触发 `NameError`（正好与 9.1 “延迟注解掩盖拼写错误”形成一正一反印证）；
+  - 同轮还将 `TOOL` 常量误拼成 `TOOLS`，并漏写了 `reasoning_content` 与 `metadata` 两个字段；通过报错定位与逐行对照修正后已完整掌握消息双序列化与旧版数据兼容设计。
 
 ## 9.3 AST 安全计算器
 - **状态**：⬜ 待开始
