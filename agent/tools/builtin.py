@@ -4,7 +4,12 @@ from __future__ import annotations
 import ast
 import math
 import operator
-from typing import Any,Callable
+import re
+from datetime import datetime
+from pathlib import Path
+from typing import Annotated, Any, Callable
+from pydantic import Field
+from agent.tools.base import RiskLevel, ToolContext, ToolRegistry
 
 _BIN_OPS:dict[type,Callable[[Any,Any],Any]] = {
     ast.Add:operator.add,ast.Sub:operator.sub,
@@ -21,6 +26,7 @@ _FUNCS: dict[str, Callable[..., Any]] = {
 }
 _CONSTS: dict[str, float] = {"pi": math.pi, "e": math.e}
 MAX_EXPRESSION_LEN, MAX_EXPONENT, MAX_ABS_RESULT = 200, 1000, 10 ** 100
+_SAFE_FILENAME = re.compile(r"^[\w\-.\u4e00-\u9fff]{1,80}$")
 
 def _eval_node(node: ast.AST) -> int | float:
     if isinstance(node, ast.Constant) and type(node.value) in (int, float):
@@ -72,3 +78,50 @@ def calculator(expression: str) -> str:
         return "计算错误：除数不能为 0"
     except (ValueError, SyntaxError, TypeError, OverflowError) as exc:
         return f"计算错误：{exc}。请修正表达式后重试。"
+
+def register_builtin_tools(registry: ToolRegistry) -> ToolRegistry:
+    @registry.tool(
+        risk_level=RiskLevel.READ_ONLY,
+        timeout=2,
+    )
+    def get_current_time() -> str:
+        """获取当前的本地日期、时间和星期。用户问时间、日期、今天几号、星期几时使用。"""
+        now = datetime.now().astimezone()
+        weekday = "一二三四五六日"[now.weekday()]
+        return f"{now.strftime('%Y-%m-%d %H:%M:%S')} 星期{weekday} (UTC{now.strftime('%z')})"
+    @registry.tool(
+        name="calculator",
+        risk_level=RiskLevel.READ_ONLY,
+        timeout=2,
+    )
+    def calculator_tool(
+        expression: Annotated[str, Field(description="数学表达式，例如 12*(3+4) 或 sqrt(2)**3")],
+    ) -> str:
+        """计算数学表达式，支持 + - * / // % ** 括号，以及 sqrt/abs/round/min/max/log/sin/cos/tan 和常量 pi/e。"""
+        return calculator(expression)
+    @registry.tool(
+        risk_level=RiskLevel.HIGH_RISK,
+        timeout=5,
+    )
+    def write_workspace_file(
+        filename: Annotated[str, Field(description="文件名（不含目录），例如 report.md")],
+        content: Annotated[str, Field(description="要写入的完整文本内容", max_length=20000)],
+        ctx: ToolContext,
+    ) -> str:
+        """把文本写入沙箱工作目录中的文件（会覆盖同名文件）。属于高危操作，需要用户审批后才会执行。"""
+        if not _SAFE_FILENAME.match(filename) or filename.startswith("."):
+            return "文件名非法：只允许字母、数字、中文、下划线、短横线和点，且不能包含目录"
+        base = Path(ctx.workspace_dir or "data/workspace").resolve()
+        target = (base / filename).resolve()
+        if target.parent != base:
+            return "拒绝写入：目标路径越出沙箱目录"
+        base.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        target.write_text(
+            content,
+            encoding="utf-8",
+        )
+        return f"已写入 {filename}（{len(content)} 字符）"
+    return registry
