@@ -1,7 +1,7 @@
 # 阶段 9 学习记录：基线修复、声明式安全工具层与全链路 Trace 底座
 
 - **目标**：修复第 8 阶段代码里的基线缺陷，将工具层重构为自动生成 Schema + Pydantic 校验 + AST 安全计算 + 并发超时控制，并建立可观测 Trace 底座。
-- **阶段状态**：⏳ 进行中（已完成 **9.1 ～ 9.3**，正在进行 **9.4 第 3 步**）
+- **阶段状态**：⏳ 进行中（已完成 **9.1 ～ 9.3**，正在进行 **9.4 第 4 步**）
 
 ---
 
@@ -12,7 +12,7 @@
 | 9.1 | 基线止血与强类型配置 | ✅ 已完成 | `f40398e` / `7f67b7c` |
 | 9.2 | 完整消息协议模型（`ToolCallItem` / 双序列化） | ✅ 已完成 | `22c684c` |
 | 9.3 | AST 安全计算器（替代 `eval`） | ✅ 已完成 | `5d1c13e` |
-| 9.4 | 声明式工具注册表与异步并发执行器 | ⏳ 进行中（2/5） | - |
+| 9.4 | 声明式工具注册表与异步并发执行器 | ⏳ 进行中（3/6） | `8522fc9` / `study(stage-9.4)` |
 | 9.5 | 全链路 `Trace → Span` 与结构化日志 | ⬜ 待开始 | - |
 
 ---
@@ -111,21 +111,23 @@
   - 手敲 `builtin.py` 第 15 行时曾将 `_UNARY_OPS` 拼成 `_UNARY_POS`（且标注为两参 `Callable`），及时定位修正并用 `-5+2` 验证通过。现已完整掌握 AST 白名单沙箱求值与包结构组织原则。
 
 ## 9.4 声明式工具注册表与异步并发执行器
-- **状态**：⏳ 进行中（已完成第 1～2 步：`agent/tools/base.py`；待第 3～5 步：`agent/tools/executor.py`、`agent/tools/builtin.py` 注册集成与删除旧 `agent/tools.py`）
-- **已掌握知识点（第 1～2 步）**：
+- **状态**：⏳ 进行中（已完成第 1～3 步：`agent/tools/base.py` 与 `agent/tools/executor.py` 上篇；待第 4～6 步：`_run` / `execute_one` / `execute_batch`、集成 `builtin.py` 与删除旧 `agent/tools.py`）
+- **已掌握知识点（第 1～3 步）**：
   - `RiskLevel(str, Enum)` 三级权限分级（`READ_ONLY` / `WRITE` / `HIGH_RISK`）与 JSON 兼容；
   - `ToolContext` 运行时上下文设计与 `if TYPE_CHECKING:` 防前向/循环导入；
   - `_StrictArgs`（`ConfigDict(extra="forbid")`）拒绝模型传未定义参数，并清理 Schema 冗余 `title`；
   - `ToolSpec.is_async`（`inspect.iscoroutinefunction`）区分同步与协程工具；
-  - `@registry.tool` 装饰器 + `get_type_hints(func, include_extras=True)` 保留 `Annotated[..., Field(...)]` 元数据 + 自动剥离 `ToolContext` 参数 + `Ellipsis` 标记必填参数并由 `pydantic.create_model` 自动推导 Schema。
-- **预习知识点导览（第 3～5 步待学）**：
-  - **异步并发控制与自愈回填（`Semaphore` + `wait_for` + `gather`）**：单步多工具并行执行并限制最大并发与单工具超时；遇到参数校验失败时把 `[参数校验失败]` 错误作为工具结果回填给模型，引导模型自行纠偏重试。
+  - `@registry.tool` 装饰器 + `get_type_hints(func, include_extras=True)` 保留 `Annotated[..., Field(...)]` 元数据 + 自动剥离 `ToolContext` 参数 + `Ellipsis` 标记必填参数并由 `pydantic.create_model` 自动推导 Schema；
+  - `ToolResult` 统一执行结果结构（`ok` / `error_type` / `duration_ms`）、`asyncio.Semaphore(max_concurrency)` 并发限流阀门、`_truncate` 输出长度防爆截断与 `FaultInjector` 故障注入类型预留。
+- **预习知识点导览（第 4～6 步待学）**：
+  - **异步并发控制与自愈回填（`Semaphore` + `wait_for` + `gather`）**：单步多工具并行执行并限制最大并发与单工具超时；同步函数通过 `asyncio.to_thread` 避免阻塞事件循环；遇到参数校验失败时把 `[参数校验失败]` 错误作为工具结果回填给模型，引导模型自行纠偏重试。
   - **路径穿越防护**：文件类工具将目标路径 `resolve()` 后校验是否在 `workspace_dir` 沙箱内，拦截 `../` 越界读写。
-- **改动文件**：`agent/tools/base.py`（9.4 第 1～2 步已完成；待第 3～5 步继续补齐）
+- **改动文件**：`agent/tools/base.py`、`agent/tools/executor.py`（上篇已提交；待补齐第 4～6 步）
 - **验收命令与结果**：
   - 第 1 步：`ToolSpec.to_openai_schema()` 正常输出含 `"additionalProperties": false` 且无 `title` 的 Schema，`is_async: True`，`_StrictArgs` 传入未知字段触发 `ValidationError`
   - 第 2 步：`@reg.tool(risk_level=RiskLevel.WRITE, timeout=5)` 注册 `save_note(..., ctx: ToolContext, count: int = 1)` → 输出 `names: ['save_note'] | len: 1 | has_save_note: True`、`ctx_param: ctx`，导出 Schema 中仅保留 `title`（`maxLength: 20`）与 `count`（`default: 1`），`ctx` 已自动剔除
-- **掌握情况与踩坑记录**：第 1～2 步一次性跑通。手敲 `base.py` 时第 7～9 行与第 11～13 行重复保留了旧导入、`ToolRegistry` 上方留有多余的 `@dataclass`（不影响运行，后续可顺手清理）；另已约定后续代码教学严格采用“多参数一行一个”排版风格。下一步继续 **9.4 第 3 步**（新建 `agent/tools/executor.py`）。
+  - 第 3 步：`ToolExecutor(reg, max_output_chars=10)` 验收 → 输出 `is_high_risk: True | unknown: None` 与 `truncate: '0123456789\n[输出过长，已截断 6 个字符]'`
+- **掌握情况与踩坑记录**：第 1～3 步均一次性验收通过。手敲 `base.py` 时第 7～9 行与第 11～13 行重复保留了旧导入、`ToolRegistry` 上方留有多余的 `@dataclass`（不影响运行，后续可顺手清理）；另已约定后续代码教学严格采用“多参数一行一个”排版风格。下一步继续 **9.4 第 4 步**（在 `agent/tools/executor.py` 实现 `_run()`）。
 
 ## 9.5 全链路 Trace 与结构化日志
 - **状态**：⬜ 待开始
