@@ -47,10 +47,120 @@ class ToolExecutor:
 
     def is_high_risk(self, name: str) -> bool:
         return self.risk_of(name) == RiskLevel.HIGH_RISK
-        
+
     def _truncate(self, text: str) -> str:
         if len(text) <= self.max_output_chars:
             return text
         omitted = len(text) - self.max_output_chars
         return text[: self.max_output_chars] + f"\n[输出过长，已截断 {omitted} 个字符]"
 
+    async def _run(
+        self,
+        spec: Any,
+        call: ToolCallItem,
+        ctx: ToolContext | None,
+        finish: Callable,
+    ) -> ToolResult:
+        try:
+            raw_args = json.loads(call.arguments or "{}")
+            if not isinstance(raw_args, dict):
+                raise ValueError("参数必须是 JSON 对象")
+            validated = spec.args_model(**raw_args).model_dump()
+        except (json.JSONDecodeError, ValueError, ValidationError, TypeError) as exc:
+            return finish(
+                content=f"[参数校验失败] 工具 '{spec.name}' 入参有误: {exc}。请对照参数 Schema 修正后重试。",
+                ok=False,
+                error_type="invalid_arguments",
+            )
+        if spec.context_param:
+            validated[spec.context_param] = ctx or ToolContext()
+        timeout = spec.timeout or self.default_timeout
+        async with self._semaphore:
+            try:
+                if self.fault_injector and (fault := self.fault_injector(spec.name)) is not None:
+                    raise fault
+                if spec.is_async:
+                    coro = spec.func(**validated)
+                else:
+                    coro = asyncio.to_thread(
+                        spec.func,
+                        **validated,
+                    )
+                output = await asyncio.wait_for(
+                    coro,
+                    timeout=timeout,
+                )
+                return finish(
+                    content="" if output is None else str(output),
+                    ok=True,
+                )
+            except (asyncio.TimeoutError, TimeoutError):
+                return finish(
+                    content=f"[工具执行超时] 工具 '{spec.name}' 超过 {timeout}s 未响应，可稍后重试或换用其他方式。",
+                    ok=False,
+                    error_type="timeout",
+                )
+            except Exception as exc:
+                logger.exception("工具 %s 运行异常", spec.name)
+                return finish(
+                    content=f"[工具运行异常] 工具 '{spec.name}' 内部报错: {type(exc).__name__}: {exc}",
+                    ok=False,
+                    error_type="exception",
+                )
+
+    async def execute_one(
+        self,
+        call: ToolCallItem,
+        ctx: ToolContext | None = None,
+    ) -> ToolResult:
+        started = time.perf_counter()
+
+        def finish(
+            content: str,
+            ok: bool,
+            error_type: str | None = None,
+        ) -> ToolResult:
+            return ToolResult(
+                tool_call_id=call.id,
+                name=call.name,
+                content=self._truncate(content),
+                ok=ok,
+                error_type=error_type,
+                duration_ms=round((time.perf_counter() - started) * 1000, 2),
+            )
+
+        spec = self.registry.get(call.name)
+        if spec is None:
+            return finish(
+                content=f"[工具不存在] 未注册工具 '{call.name}'，可用工具: {', '.join(self.registry.names())}。",
+                ok=False,
+                error_type="unknown_tool",
+            )
+        result = await self._run(
+            spec=spec,
+            call=call,
+            ctx=ctx,
+            finish=finish,
+        )
+        logger.info(
+            "工具 %s 完成 ok=%s 耗时=%.1fms",
+            call.name,
+            result.ok,
+            result.duration_ms,
+        )
+        return result
+
+    async def execute_batch(
+        self,
+        calls: list[ToolCallItem],
+        ctx: ToolContext | None = None,
+    ) -> list[ToolResult]:
+        """并发执行同一步内的多个工具调用，结果顺序与输入一致。"""
+        coros = [
+            self.execute_one(
+                call=c,
+                ctx=ctx,
+            )
+            for c in calls
+        ]
+        return list(await asyncio.gather(*coros))
