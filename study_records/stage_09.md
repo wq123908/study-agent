@@ -1,7 +1,7 @@
 # 阶段 9 学习记录：基线修复、声明式安全工具层与全链路 Trace 底座
 
 - **目标**：修复第 8 阶段代码里的基线缺陷，将工具层重构为自动生成 Schema + Pydantic 校验 + AST 安全计算 + 并发超时控制，并建立可观测 Trace 底座。
-- **阶段状态**：⏳ 进行中（已完成 **9.1 ～ 9.2**，准备开始 **9.3**）
+- **阶段状态**：⏳ 进行中（已完成 **9.1 ～ 9.3**，准备开始 **9.4**）
 
 ---
 
@@ -10,9 +10,9 @@
 | 环节 | 主题 | 状态 | 提交 Hash |
 | :---: | :--- | :---: | :--- |
 | 9.1 | 基线止血与强类型配置 | ✅ 已完成 | `f40398e` / `7f67b7c` |
-| 9.2 | 完整消息协议模型（`ToolCallItem` / 双序列化） | ✅ 已完成 | `study(stage-9.2)` |
-| 9.3 | AST 安全计算器（替代 `eval`） | ⏳ 待开始 | - |
-| 9.4 | 声明式工具注册表与异步并发执行器 | ⬜ 待开始 | - |
+| 9.2 | 完整消息协议模型（`ToolCallItem` / 双序列化） | ✅ 已完成 | `22c684c` |
+| 9.3 | AST 安全计算器（替代 `eval`） | ✅ 已完成 | `study(stage-9.3)` |
+| 9.4 | 声明式工具注册表与异步并发执行器 | ⏳ 待开始 | - |
 | 9.5 | 全链路 `Trace → Span` 与结构化日志 | ⬜ 待开始 | - |
 
 ---
@@ -82,14 +82,33 @@
   - 同轮还将 `TOOL` 常量误拼成 `TOOLS`，并漏写了 `reasoning_content` 与 `metadata` 两个字段；通过报错定位与逐行对照修正后已完整掌握消息双序列化与旧版数据兼容设计。
 
 ## 9.3 AST 安全计算器
-- **状态**：⬜ 待开始
-- **预习知识点导览**（完成后补充实操细节与踩坑记录）：
-  - **为何禁用 `eval()`**：即使传入 `{"__builtins__": None}`，Python 仍可通过 `__class__.__mro__` 等属性链完成沙箱逃逸并执行任意系统命令。
-  - **AST 白名单语法树求值（`ast.parse`）**：把表达式解析成抽象语法树，仅放行常量数字、四则/幂/取模运算符与白名单数学函数，从语法层彻底阻断属性访问、下标与函数注入。
-  - **DoS 资源耗尽防护**：限制表达式最大长度、幂运算底数/指数上限与中间结果规模（防 `9**99999` 卡死进程），并移除旧版 `except` 后的不可达死代码。
-- **改动文件**：`agent/tools/builtin.py`（待手敲）
+- **状态**：✅ 已完成（第 1～2 步全部验收通过）
+- **改动文件**：`agent/tools/__init__.py`、`agent/tools/builtin.py`
+- **学习知识点详解**：
+  1. **为何 `eval(..., {"__builtins__": None})` 依然可被逃逸**：
+     - Python 一切皆对象，清空 `__builtins__` 后仍可通过 `(1).__class__.__base__.__subclasses__()` 顺着继承链捞出系统类并执行任意代码；同时 `9**99999` 会直接引发算力/内存 DoS。
+  2. **AST 白名单语法树求值（`ast.parse(..., mode="eval")` + `_eval_node`）**：
+     - `ast.parse(..., mode="eval")` **只做词法与语法解析、绝不执行代码**，且限制只能输入单个表达式（禁止 `import`、赋值、多语句）。
+     - 递归节点 `_eval_node` 采用**严格白名单**：只放行合法数字常量、`pi/e` 常量名、`_UNARY_OPS` 一元运算符、`_BIN_OPS` 二元运算符以及 `_FUNCS` 数学函数直接调用（`isinstance(node.func, ast.Name)` 且 `not node.keywords`），彻底阻断 `ast.Attribute` 属性链访问与 `__import__` 等未知调用。
+  3. **`type(node.value) in (int, float)` 与 `isinstance` 的细微陷阱**：
+     - Python 中 `bool` 是 `int` 的子类（`isinstance(True, int) == True`）。刻意用精确类型检查 `type(node.value) in (int, float)`，能同时拒绝 `True + 1` 这类布尔隐式数值运算。
+  4. **前置 DoS 算力与溢出防线**：
+     - 限制表达式最大长度 `MAX_EXPRESSION_LEN = 200`；
+     - 在真正执行 `operator.pow` **之前**拦截 `abs(right) > MAX_EXPONENT`（`1000`），防止 `9**99999` 卡死进程；
+     - 运算后检查 `abs(result) > MAX_ABS_RESULT`（`10**100`），并兼容替换大模型常输出的中文符号（`×` → `*`、`÷` → `/`、`^` → `**`）。
+  5. **数值格式化 `_format_number` 与工具错误自愈封装 `calculator`**：
+     - `value.is_integer() and abs(value) < 1e15` 把整除产生的 `21.0` 清洗成 `"21"`，同时避免超大浮点数强转 `int` 丢失科学计数精度；
+     - `f"{value:.10g}"` 保留 10 位有效数字并自动去掉尾零，消去 `0.1 + 0.2 -> 0.30000000000000004` 的 IEEE 754 尾数噪音；
+     - `calculator()` 捕获 `ZeroDivisionError`、`ValueError`、`SyntaxError`、`TypeError`、`OverflowError` 并返回可读提示字符串，引导大模型在下一轮自我纠偏，替代旧版 `agent/tools.py` 的 `eval` 与死代码。
+  6. **Python 包约定与同名文件遮蔽规则（实操印证）**：
+     - 只有包含 **`__init__.py`**（前后双下划线）的目录才会被 Python 识别为常规包；普通文件名 `init.py` 不具备该语义。
+     - 当目录下同时存在 `agent/tools.py` 与 `agent/tools/` 子目录时，若缺失 `agent/tools/__init__.py`，Python 会优先加载 `agent/tools.py` 从而抛出 `ModuleNotFoundError: 'agent.tools' is not a package`。
 - **验收命令与结果**：
+  - 第 1 步：`safe_eval` 实测 `12*(3+4)=84`、`sqrt(16)+max(2,5)=9.0`、`6×7÷2=21.0`、`-5+2=-3`；成功拦截 `__import__(str(1))`（`不支持的语法: Call`）、`9**99999`（`指数超过 1000`）、`(1).__class__`（`不支持的语法: Attribute`）与 `True + 1`（`不支持的语法: Constant`）
+  - 第 2 步：`calculator` 实测 `12*(3+4) => 84`、`6×7÷2 => 21`、`0.1+0.2 => 0.3`、`1/0 => 计算错误：除数不能为 0`、`1e300**2 => 计算错误：(34, 'Result too large')。请修正表达式后重试。`
 - **掌握情况与踩坑记录**：
+  - 第 1 步新建包入口时曾误命名为 `agent/tools/init.py`（漏掉双下划线），直接触发了 `'agent.tools' is not a package` 遮蔽报错；重命名为 `__init__.py` 后立即恢复正常。
+  - 手敲 `builtin.py` 第 15 行时曾将 `_UNARY_OPS` 拼成 `_UNARY_POS`（且标注为两参 `Callable`），及时定位修正并用 `-5+2` 验证通过。现已完整掌握 AST 白名单沙箱求值与包结构组织原则。
 
 ## 9.4 声明式工具注册表与异步并发执行器
 - **状态**：⬜ 待开始
