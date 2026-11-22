@@ -30,7 +30,7 @@
 | **9.2** | 完整消息协议模型 | `ToolCallItem`、`tool_call_id`、`reasoning_content`、`to_dict()`（发 API）与 `to_record()`（落盘）分离、兼容旧 `memory.json` | `agent/message.py` | 含 `tool_calls` 与 `tool` 的消息可完整序列化/反序列化，且能读取阶段 4 旧版 JSON | ✅ |
 | **9.3** | AST 安全计算器 | 用 Python `ast.parse` 白名单语法树替代危险的 `eval()`，限制表达式长度、指数与数值范围 | `agent/tools/builtin.py` | `12*(3+4)` 返回 `"84"`；`__import__('os').system('whoami')`、`9**99999` 等被拦截返回安全提示 | ✅ |
 | **9.4** | 声明式工具注册与并发执行器 | `@registry.tool` + `inspect` + `pydantic.create_model` 自动推导 Schema、`ToolContext` 注入、`RiskLevel` 分级、`asyncio.Semaphore` + `wait_for` + `gather` 并发、校验错误回填自愈 | `agent/tools/__init__.py`<br>`agent/tools/base.py`<br>`agent/tools/executor.py`<br>`agent/tools/builtin.py` | 自动导出 OpenAI Schema（不含 `ctx`）；故意传错参数名返回 `[参数校验失败]`；4 个 0.3s 异步工具并发总耗时 < 0.9s；沙箱写文件拒绝 `../` 越界 | ✅ |
-| **9.5** | 全链路 Trace 与结构化日志 | `contextvars` 透传 `Trace` / `Span` 树、TTFT 与 `usage` 统计、JSONL 导出、`TraceContextFilter`、终端 ASCII 瀑布图 | `agent/observability/__init__.py`<br>`agent/observability/tracer.py`<br>`agent/observability/logger.py`<br>`agent/observability/view.py` | 跑一次嵌套 `span` 后写出 `.jsonl`，运行 `python -m agent.observability.view` 在终端打印树状瀑布图 | ⬜ |
+| **9.5** | 全链路 Trace 与结构化日志 | `contextvars` 透传 `Trace` / `Span` 树、TTFT 与 `usage` 统计、JSONL 导出、`TraceContextFilter`、终端 ASCII 瀑布图 | `agent/observability/__init__.py`<br>`agent/observability/tracer.py`<br>`agent/observability/logger.py`<br>`agent/observability/view.py` | 跑一次嵌套 `span` 后写出 `.jsonl`，运行 `python -m agent.observability.view` 在终端打印树状瀑布图 | ✅ |
 
 ---
 

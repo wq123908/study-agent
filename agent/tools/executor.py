@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 from pydantic import ValidationError
 from agent.message import ToolCallItem
+from agent.observability.tracer import span
 from agent.tools.base import RiskLevel, ToolContext, ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -129,19 +130,32 @@ class ToolExecutor:
                 duration_ms=round((time.perf_counter() - started) * 1000, 2),
             )
 
-        spec = self.registry.get(call.name)
-        if spec is None:
-            return finish(
-                content=f"[工具不存在] 未注册工具 '{call.name}'，可用工具: {', '.join(self.registry.names())}。",
-                ok=False,
-                error_type="unknown_tool",
+        with span(
+            kind="tool",
+            name=call.name,
+            input={"arguments": call.arguments},
+        ) as sp:
+            spec = self.registry.get(call.name)
+            if spec is None:
+                result = finish(
+                    content=f"[工具不存在] 未注册工具 '{call.name}'，可用工具: {', '.join(self.registry.names())}。",
+                    ok=False,
+                    error_type="unknown_tool",
+                )
+            else:
+                result = await self._run(
+                    spec=spec,
+                    call=call,
+                    ctx=ctx,
+                    finish=finish,
+                )
+            sp.update(
+                output=result.content[:500],
+                ok=result.ok,
+                error_type=result.error_type,
             )
-        result = await self._run(
-            spec=spec,
-            call=call,
-            ctx=ctx,
-            finish=finish,
-        )
+            if not result.ok:
+                sp.set_error(result.error_type or "error")
         logger.info(
             "工具 %s 完成 ok=%s 耗时=%.1fms",
             call.name,

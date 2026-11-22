@@ -1,7 +1,7 @@
 # 阶段 9 学习记录：基线修复、声明式安全工具层与全链路 Trace 底座
 
 - **目标**：修复第 8 阶段代码里的基线缺陷，将工具层重构为自动生成 Schema + Pydantic 校验 + AST 安全计算 + 并发超时控制，并建立可观测 Trace 底座。
-- **阶段状态**：⏳ 进行中（已完成 **9.1 ～ 9.4**，正在进行 **9.5 第 6 步**）
+- **阶段状态**：✅ 已完成（**9.1 ～ 9.5** 全部验收通过，全链路联调达标）
 
 ---
 
@@ -13,7 +13,7 @@
 | 9.2 | 完整消息协议模型（`ToolCallItem` / 双序列化） | ✅ 已完成 | `22c684c` |
 | 9.3 | AST 安全计算器（替代 `eval`） | ✅ 已完成 | `5d1c13e` |
 | 9.4 | 声明式工具注册表与异步并发执行器 | ✅ 已完成 | `8522fc9` / `2f85449` / `a566e9d` / `3bf36d0` / `c839fee` |
-| 9.5 | 全链路 `Trace → Span` 与结构化日志 | ⏳ 进行中（5/8） | `7893fdf` / `71d9eb1` / `study(stage-9.5)` |
+| 9.5 | 全链路 `Trace → Span` 与结构化日志 | ✅ 已完成 | `7893fdf` / `71d9eb1` / `00f5bfc` / `study(stage-9.5)` |
 
 ---
 
@@ -135,21 +135,31 @@
 - **掌握情况与踩坑记录**：第 1～7 步全部一次性验收通过！第 4 步通过观察 `logger.exception` 堆栈理解了“日志记录堆栈”与“安全拦截返回”的区别；第 6 步顺利实现工具注册与双层沙箱防穿越；约定了“多参数一行一个”排版风格后手敲准确度大幅提升（注：`base.py` 头部留有旧导入、`__init__.py` 首行留有旧文档字符串，均不影响运行）。下一步进入阶段 9 最后一节 **9.5 全链路 Trace 与结构化日志**。
 
 ## 9.5 全链路 Trace 与结构化日志
-- **状态**：⏳ 进行中（已完成第 1～5 步：完整 `agent/observability/tracer.py`；待第 6～8 步：`logger.py`、`view.py`、`__init__.py` 导出及 `executor.py` 埋点）
-- **已掌握知识点（第 1～5 步）**：
-  - `contextvars.ContextVar` 实现协程级隔离上下文透传（替代全局变量的并发串台风险），配合 `from __future__ import annotations` 实现对未定义 `Trace` 的前向注解；
-  - `Span` 节点模型（`kind` / `name` / `trace_id` / `parent_id` / `span_id`、`duration_ms` 属性计算及 `to_dict()` 手动补全 `@property` 字段）；
-  - `Trace` 根节点与并发保护：使用 `threading.Lock`（`repr=False, compare=False`）同时兼容主事件循环协程与 `to_thread` 工作线程写入；手写 `to_dict()` 避开 `asdict()` 无法深拷贝锁对象的 `TypeError`；`add_usage()` 排除 `bool` 子类避免把布尔标志计入 Token 总数；
-  - `TraceExporter(Protocol)` 鸭子类型解耦、`JsonlTraceExporter` 按日加锁追加行式 JSONL（配合 `default=str` 兜底 `Path` 等非 JSON 类型）与 `InMemoryTraceExporter` 测试导出器；
-  - `Tracer` 协调器（`*,` 强制关键字传参、`if trace.end is not None` 幂等防重复导出、`try/except` 隔离导出异常保证观测不拖垮业务）；
-  - `activate_trace` / `deactivate_trace` 与 `@contextmanager def span(...)`：借助 `ContextVar.set/reset(token)` 实现自动嵌套父子链，区分 `GeneratorExit` 为 `cancelled`，兼容异上下文 `ValueError` 兜底，无活动 Trace 时零侵入退化。
-- **预习知识点导览（第 6～8 步待学）**：
-  - **结构化日志注入与可视化（`TraceContextFilter` + `JsonFormatter` + ASCII 瀑布图）**：让每条标准 `logging` 自动携带 `trace_id` / `session_id`，并通过 `python -m agent.observability.view` 在终端直观画出耗时瀑布图，并将 `span("tool", ...)` 接入 `executor.py`。
-- **改动文件**：`agent/observability/tracer.py`（已完成并提交；待第 6～8 步补齐其余文件）
+- **状态**：✅ 已完成（第 1～9 步全部验收通过）
+- **改动文件**：`agent/observability/__init__.py`、`agent/observability/tracer.py`、`agent/observability/logger.py`、`agent/observability/view.py`、`agent/tools/executor.py`
+- **学习知识点详解（第 1～9 步全览）**：
+  1. **协程隔离透传（`contextvars.ContextVar`）**：
+     - 替代普通全局变量防多协程并发串台；通过 `activate_trace` / `deactivate_trace` 管理请求生命周期，`@contextmanager def span(...)` 借由 `set()` / `reset(token)` 自动构建任意深度的父子 `parent_id` 调用树。
+     - 区分 `GeneratorExit`（SSE 断流）为 `status="cancelled"` 而非报错；捕获异上下文关闭的 `ValueError` 安全兜底；无活动 Trace 时零侵入退化为空操作。
+  2. **线程安全聚合模型（`Span` / `Trace`）**：
+     - `Span.to_dict()` 手动补充 `@property duration_ms`（因 `asdict()` 不导出属性）；
+     - `Trace` 使用 `threading.Lock`（`repr=False, compare=False`）同时兼容主事件循环协程与 `to_thread` 工作线程写入，手写 `to_dict()` 避开 `asdict()` 深拷贝锁报错；`add_usage()` 显式排除 `bool` 子类避免误计 Token。
+  3. **面向协议的可插拔导出与容错隔离（`TraceExporter` / `JsonlTraceExporter` / `Tracer`）**：
+     - `TraceExporter(Protocol)` 定义鸭子类型接口，按日加锁追加行式 `.jsonl`（`default=str` 兜底非 JSON 对象）；`InMemoryTraceExporter` 供离线测试断言；
+     - `Tracer.finish_trace()` 以 `if trace.end is not None: return` 保障幂等不重复导出，用 `try/except` 隔离导出失败确保观测故障不拖垮业务。
+  4. **结构化日志注入（`TraceContextFilter` + `JsonFormatter` + `setup_logging`）**：
+     - Filter 必须挂在 **`handler.addFilter(...)`** 而非 `root` logger，确保所有子模块向上冒泡的日志均能自动注入 12 位 `trace_id` 与 `session_id`；
+     - 支持文本与单行 JSON 双模式切换，使用 `root.handlers[:] = [handler]` 防重复打印并静音 `httpx`/`openai` 刷屏日志。
+  5. **终端 ASCII 瀑布图与工具埋点联调（`view.py` + `executor.py`）**：
+     - 按 `parent_id` 重建邻接表并按 `start` 排序，DFS 递归渲染缩进、相对偏移条与 `ttft_ms` / `✗ error` 高亮；`main(argv=None) -> int` 兼顾 CLI（`python -m agent.observability.view`）与单测可测性；
+     - 在 `ToolExecutor.execute_one()` 接入 `with span("tool", ...)`，统一收敛未知工具、错参、超时与并发工具耗时，实现 9.1～9.5 全链路贯通。
 - **验收命令与结果**：
-  - 第 1 步：`Span` 实例化与状态更新实测 → 输出 `before_end: None | default_trace: None` 与 `after_end: 250.0 | status: error | err: timeout | attrs: {'ttft_ms': 120.5}`
-  - 第 2 步：`Trace` 实测 → 输出 `usage: {'prompt_tokens': 150, 'completion_tokens': 35} | spans: 1 | ms: 500.0`（成功忽略 `cache_hit: True`）与 `has_lock_in_repr: False`
-  - 第 3 步：`JsonlTraceExporter` + `InMemoryTraceExporter` 实测 → 写出 `2026-11-22.jsonl` 且 `trace_id_match: True | input: demo.txt`、`mem_count: 1`
-  - 第 4 步：`Tracer` 实测 → `BrokenExporter` 报 `OSError: 磁盘满了` 被日志隔离，重复 `finish_trace` 幂等生效，输出 `exported_count: 1 | output: hello | status: ok`
-  - 第 5 步：`activate_trace` / `span` 嵌套实测 → `inside_tid: True`、`outside_tid: -`、`parent_link_ok: True`、`orphan_ok: - ok`
-- **掌握情况与踩坑记录**：第 3 步对导出器定位起初有些模糊，经“餐厅总账单与可插拔记账插座”类比后理解清晰；第 5 步手敲时将 `current_trace` ～ `span` 5 个模块级函数多缩进了 4 空格误放入 `class Tracer` 内导致 `ImportError`，用 `Shift+Tab` 顶格修正后立即跑通。整份 `tracer.py` 已完工，下一步进入 **9.5 第 6 步**（新建 `agent/observability/logger.py`）。
+  - 第 1 步：`Span` 实测 → `before_end: None | default_trace: None`、`after_end: 250.0 | status: error | err: timeout | attrs: {'ttft_ms': 120.5}`
+  - 第 2 步：`Trace` 实测 → `usage: {'prompt_tokens': 150, 'completion_tokens': 35} | spans: 1 | ms: 500.0`（忽略 `cache_hit: True`）、`has_lock_in_repr: False`
+  - 第 3 步：导出器实测 → 写出 `2026-11-22.jsonl` 且 `trace_id_match: True | input: demo.txt`、`mem_count: 1`
+  - 第 4 步：`Tracer` 实测 → `BrokenExporter` 报 `OSError: 磁盘满了` 被隔离，重复 `finish_trace` 幂等，输出 `exported_count: 1 | output: hello | status: ok`
+  - 第 5 步：`span` 嵌套实测 → `inside_tid: True`、`outside_tid: -`、`parent_link_ok: True`、`orphan_ok: - ok`
+  - 第 6 步：`logger.py` 实测 → 文本日志自动区分 `-` 与 `aaeefad5b2b3`，JSON 模式输出含 `trace_id` / `session_id: "sess_42"` 的标准 JSON
+  - 第 7～8 步：`view.py` 实测 → `python -m agent.observability.view --list 5` 输出 `cli_demo` 概览行，紧接着画出完整 `step-1` → `llm`（`ttft=18.5ms`）+ `tool` 瀑布图
+  - 第 9 步（阶段 9 全链路总验收）：并发执行 `get_current_time`、`calculator`、`nope` → 3 条 `agent.tools.executor` 日志均自动带 `94e9c07a7986`，`python -m agent.observability.view` 展示并发重叠条（总耗时 10.1ms）及 `tool:nope ... ✗ unknown_tool` 错误高亮
+- **掌握情况与踩坑记录**：第 3 步经“餐厅总账单与可插拔记账插座”类比后厘清了 `TraceExporter` 职责；第 5 步曾将 `current_trace`～`span` 多缩进 4 空格误放入 `class Tracer` 内导致 `ImportError`，用 `Shift+Tab` 修正后即通；第 6～9 步全部一次性通过验收！阶段 9 圆满收官，下一阶段进入 **阶段 10 —— AsyncLLM 流式聚合与 L1/L2/L3 分层记忆**。
