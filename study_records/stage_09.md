@@ -1,7 +1,7 @@
 # 阶段 9 学习记录：基线修复、声明式安全工具层与全链路 Trace 底座
 
 - **目标**：修复第 8 阶段代码里的基线缺陷，将工具层重构为自动生成 Schema + Pydantic 校验 + AST 安全计算 + 并发超时控制，并建立可观测 Trace 底座。
-- **阶段状态**：⏳ 进行中（已完成 **9.1 ～ 9.4**，准备开始 **9.5**）
+- **阶段状态**：⏳ 进行中（已完成 **9.1 ～ 9.4**，正在进行 **9.5 第 2 步**）
 
 ---
 
@@ -12,8 +12,8 @@
 | 9.1 | 基线止血与强类型配置 | ✅ 已完成 | `f40398e` / `7f67b7c` |
 | 9.2 | 完整消息协议模型（`ToolCallItem` / 双序列化） | ✅ 已完成 | `22c684c` |
 | 9.3 | AST 安全计算器（替代 `eval`） | ✅ 已完成 | `5d1c13e` |
-| 9.4 | 声明式工具注册表与异步并发执行器 | ✅ 已完成 | `8522fc9` / `2f85449` / `a566e9d` / `3bf36d0` / `study(stage-9.4)` |
-| 9.5 | 全链路 `Trace → Span` 与结构化日志 | ⏳ 待开始 | - |
+| 9.4 | 声明式工具注册表与异步并发执行器 | ✅ 已完成 | `8522fc9` / `2f85449` / `a566e9d` / `3bf36d0` / `c839fee` |
+| 9.5 | 全链路 `Trace → Span` 与结构化日志 | ⏳ 进行中（1/7） | - |
 
 ---
 
@@ -135,11 +135,15 @@
 - **掌握情况与踩坑记录**：第 1～7 步全部一次性验收通过！第 4 步通过观察 `logger.exception` 堆栈理解了“日志记录堆栈”与“安全拦截返回”的区别；第 6 步顺利实现工具注册与双层沙箱防穿越；约定了“多参数一行一个”排版风格后手敲准确度大幅提升（注：`base.py` 头部留有旧导入、`__init__.py` 首行留有旧文档字符串，均不影响运行）。下一步进入阶段 9 最后一节 **9.5 全链路 Trace 与结构化日志**。
 
 ## 9.5 全链路 Trace 与结构化日志
-- **状态**：⏳ 待开始（准备进行第 1 步）
-- **预习知识点导览**（完成后补充实操细节与踩坑记录）：
-  - **异步上下文透传（`contextvars`）**：在 `async/await` 并发协程间无侵入自动传递当前 `Trace` 与父子 `Span`，无需在每个业务函数签名里层层手传 `trace_id`。
-  - **可观测指标采集（TTFT / Token `usage` / 耗时分布）**：记录首字延迟（TTFT）、各轮推理与工具调用的层级树，并将完整轨迹落盘为 `.jsonl`。
-  - **结构化日志注入与可视化（`TraceContextFilter` + ASCII 瀑布图）**：让每条标准 `logging` 自动携带 `trace_id` / `span_id`，并通过 `python -m agent.observability.view` 在终端直观画出耗时瀑布图。
-- **改动文件**：`agent/observability/__init__.py`、`agent/observability/tracer.py`、`agent/observability/logger.py`、`agent/observability/view.py`（待手敲）
+- **状态**：⏳ 进行中（已完成第 1 步：`agent/observability/tracer.py` 上篇 `ContextVar` 与 `Span`；待补充 `Trace`、导出器、`span()` 上下文、`logger.py`、`view.py` 与 `executor.py` 埋点）
+- **已掌握知识点（第 1 步）**：
+  - `contextvars.ContextVar` 实现协程级隔离上下文透传（替代全局变量的并发串台风险），配合 `from __future__ import annotations` 实现对未定义 `Trace` 的前向注解；
+  - `Span` 节点模型（`kind` / `name` / `trace_id` / `parent_id` / `span_id`、`duration_ms` 属性计算及 `to_dict()` 手动补全 `@property` 字段）。
+- **预习知识点导览（后续步骤待学）**：
+  - **线程安全聚合与导出（`Trace` + `JsonlTraceExporter`）**：用 `threading.Lock` 保护并发 `add_span` / `add_usage`，并将整棵树按日期写入 `.jsonl`。
+  - **可观测指标与上下文 API（`span` 上下文管理器）**：自动绑定父子 `parent_id`、处理 `GeneratorExit`（SSE 提前断开）与异常状态。
+  - **结构化日志注入与可视化（`TraceContextFilter` + ASCII 瀑布图）**：让每条标准 `logging` 自动携带 `trace_id` / `session_id`，并通过 `python -m agent.observability.view` 在终端直观画出耗时瀑布图。
+- **改动文件**：`agent/observability/tracer.py`（第 1 步已完成；收尾时补齐 `agent/observability/__init__.py` 等文件）
 - **验收命令与结果**：
-- **掌握情况与踩坑记录**：
+  - 第 1 步：`Span` 实例化与状态更新实测 → 输出 `before_end: None | default_trace: None` 与 `after_end: 250.0 | status: error | err: timeout | attrs: {'ttft_ms': 120.5}`
+- **掌握情况与踩坑记录**：第 1 步一次性跑通（注：本次尚未新建 `agent/observability/__init__.py`，因无同名 `.py` 文件遮蔽，Python 3 按隐式命名空间包正常导入，收尾步再补齐 `__init__.py` 统一导出）。下一步继续 **9.5 第 2 步**（`Trace` 聚合模型）。
