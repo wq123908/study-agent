@@ -1,7 +1,7 @@
 # 阶段 9 学习记录：基线修复、声明式安全工具层与全链路 Trace 底座
 
 - **目标**：修复第 8 阶段代码里的基线缺陷，将工具层重构为自动生成 Schema + Pydantic 校验 + AST 安全计算 + 并发超时控制，并建立可观测 Trace 底座。
-- **阶段状态**：⏳ 进行中（已完成 **9.1 ～ 9.3**，正在进行 **9.4 第 7 步**）
+- **阶段状态**：⏳ 进行中（已完成 **9.1 ～ 9.4**，准备开始 **9.5**）
 
 ---
 
@@ -12,8 +12,8 @@
 | 9.1 | 基线止血与强类型配置 | ✅ 已完成 | `f40398e` / `7f67b7c` |
 | 9.2 | 完整消息协议模型（`ToolCallItem` / 双序列化） | ✅ 已完成 | `22c684c` |
 | 9.3 | AST 安全计算器（替代 `eval`） | ✅ 已完成 | `5d1c13e` |
-| 9.4 | 声明式工具注册表与异步并发执行器 | ⏳ 进行中（6/7） | `8522fc9` / `2f85449` / `a566e9d` |
-| 9.5 | 全链路 `Trace → Span` 与结构化日志 | ⬜ 待开始 | - |
+| 9.4 | 声明式工具注册表与异步并发执行器 | ✅ 已完成 | `8522fc9` / `2f85449` / `a566e9d` / `3bf36d0` / `study(stage-9.4)` |
+| 9.5 | 全链路 `Trace → Span` 与结构化日志 | ⏳ 待开始 | - |
 
 ---
 
@@ -111,7 +111,7 @@
   - 手敲 `builtin.py` 第 15 行时曾将 `_UNARY_OPS` 拼成 `_UNARY_POS`（且标注为两参 `Callable`），及时定位修正并用 `-5+2` 验证通过。现已完整掌握 AST 白名单沙箱求值与包结构组织原则。
 
 ## 9.4 声明式工具注册表与异步并发执行器
-- **状态**：⏳ 进行中（已完成第 1～6 步：`base.py`、`executor.py` 与 `builtin.py`；待最后第 7 步：完善 `agent/tools/__init__.py` 统一导出、清理旧 `agent/tools.py` 并做总验收）
+- **状态**：✅ 已完成（第 1～7 步全部验收通过）
 - **已掌握知识点（第 1～6 步）**：
   - `RiskLevel(str, Enum)` 三级权限分级（`READ_ONLY` / `WRITE` / `HIGH_RISK`）与 JSON 兼容；
   - `ToolContext` 运行时上下文设计与 `if TYPE_CHECKING:` 防前向/循环导入；
@@ -121,10 +121,9 @@
   - `ToolResult` 统一执行结果结构（`ok` / `error_type` / `duration_ms`）、`asyncio.Semaphore(max_concurrency)` 并发限流阀门、`_truncate` 输出长度防爆截断与 `FaultInjector` 故障注入钩子；
   - `_run()` 四层保护（JSON + Pydantic 校验失败回填 `[参数校验失败]` 引导模型自愈、`ToolContext` 在校验后注入、同步函数通过 `asyncio.to_thread` 防阻塞事件循环、`asyncio.wait_for` 超时熔断与 `logger.exception` 记录堆栈同时隔离内部异常）；
   - `execute_one()`（`time.perf_counter()` 计时、统一 `finish` 截断出口、未知工具列出可用工具名）与 `execute_batch()`（`asyncio.gather` 并发执行并严格保序）；
-  - `register_builtin_tools` 装饰器集中注册（`name="calculator"` 复用 9.3 安全计算器、`now.astimezone()` 带时区本地时间）、`write_workspace_file` 标为 `HIGH_RISK` 并实现“正则白名单 + `Path.resolve()` 父目录核对”双层沙箱防路径穿越。
-- **预习知识点导览（第 7 步待学）**：
-  - **包门面导出与旧文件清理**：在 `agent/tools/__init__.py` 提供 `default_registry()` 与 `__all__` 统一导出，并移除阶段 5 遗留的 `agent/tools.py` 避免模块遮蔽隐患。
-- **改动文件**：`agent/tools/base.py`、`agent/tools/executor.py`、`agent/tools/builtin.py`（已完成并提交；待第 7 步收尾）
+  - `register_builtin_tools` 装饰器集中注册（`name="calculator"` 复用 9.3 安全计算器、`now.astimezone()` 带时区本地时间）、`write_workspace_file` 标为 `HIGH_RISK` 并实现“正则白名单 + `Path.resolve()` 父目录核对”双层沙箱防路径穿越；
+  - **包门面统一导出（`agent/tools/__init__.py`）**：提供 `default_registry()` 工厂方法（每次创建独立实例避免全局状态污染）与 `__all__` 清晰边界，正式退役阶段 5 单文件 `agent/tools.py`。
+- **改动文件**：`agent/tools/__init__.py`、`agent/tools/base.py`、`agent/tools/executor.py`、`agent/tools/builtin.py`（并移除旧 `agent/tools.py`）
 - **验收命令与结果**：
   - 第 1 步：`ToolSpec.to_openai_schema()` 正常输出含 `"additionalProperties": false` 且无 `title` 的 Schema，`is_async: True`，`_StrictArgs` 传入未知字段触发 `ValidationError`
   - 第 2 步：`@reg.tool(risk_level=RiskLevel.WRITE, timeout=5)` 注册 `save_note(..., ctx: ToolContext, count: int = 1)` → 输出 `names: ['save_note'] | len: 1 | has_save_note: True`、`ctx_param: ctx`，导出 Schema 中仅保留 `title`（`maxLength: 20`）与 `count`（`default: 1`），`ctx` 已自动剔除
@@ -132,10 +131,11 @@
   - 第 4 步：`_run()` 四场景实测 → `add('3', 4)` 输出 `ok: True | content: alice:7`、`add('bad', 1)` 返回 `invalid_arguments`、`slow` 超时返回 `timeout`、`boom` 捕获 `RuntimeError` 返回 `exception`（`logger.exception` 打印堆栈但不崩溃）
   - 第 5 步：`execute_one` + `execute_batch` 实测 → `unknown: False unknown_tool`、4 个 0.3s 异步工具并发 `batch_elapsed: 0.316` 秒（`< 0.9s`）且保序 `['c0', 'c1', 'c2', 'c3']`、`fault_injector` 注入 `TimeoutError` 返回 `fault: False timeout`
   - 第 6 步：`register_builtin_tools` 实测 → 注册 `['get_current_time', 'calculator', 'write_workspace_file']`、`high_risk_write: True`、`12*(3+4)` 返回 `84`、`../evil.txt` 被拦截且未写磁盘、合法 `note.md` 写入成功
-- **掌握情况与踩坑记录**：第 1～6 步均一次性验收通过。第 4 步通过观察 `logger.exception` 堆栈理解了“日志记录堆栈”与“安全拦截返回”的区别；第 6 步在 `builtin.py` 顺利实现了工具注册与双层沙箱防穿越。下一步完成 **9.4 第 7 步**（更新 `agent/tools/__init__.py`、删旧 `agent/tools.py` 并运行总验收）。
+  - 第 7 步（9.4 总验收）：从 `agent.tools` 门面导出运行 → `1_schema_no_ctx: True`、`2_bad_arg: False invalid_arguments True`、`3_concurrent_lt_0.9: True | elapsed: 0.302`、`4_sandbox: True | evil_exists: False`；旧 `agent/tools.py` 已移除
+- **掌握情况与踩坑记录**：第 1～7 步全部一次性验收通过！第 4 步通过观察 `logger.exception` 堆栈理解了“日志记录堆栈”与“安全拦截返回”的区别；第 6 步顺利实现工具注册与双层沙箱防穿越；约定了“多参数一行一个”排版风格后手敲准确度大幅提升（注：`base.py` 头部留有旧导入、`__init__.py` 首行留有旧文档字符串，均不影响运行）。下一步进入阶段 9 最后一节 **9.5 全链路 Trace 与结构化日志**。
 
 ## 9.5 全链路 Trace 与结构化日志
-- **状态**：⬜ 待开始
+- **状态**：⏳ 待开始（准备进行第 1 步）
 - **预习知识点导览**（完成后补充实操细节与踩坑记录）：
   - **异步上下文透传（`contextvars`）**：在 `async/await` 并发协程间无侵入自动传递当前 `Trace` 与父子 `Span`，无需在每个业务函数签名里层层手传 `trace_id`。
   - **可观测指标采集（TTFT / Token `usage` / 耗时分布）**：记录首字延迟（TTFT）、各轮推理与工具调用的层级树，并将完整轨迹落盘为 `.jsonl`。
