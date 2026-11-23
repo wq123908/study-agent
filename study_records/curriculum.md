@@ -38,7 +38,7 @@
 
 | 环节 | 主题 | 核心知识点 | 涉及文件 | 验收标准 | 状态 |
 | :---: | :--- | :--- | :--- | :--- | :---: |
-| **10.1** | AsyncLLM 流式聚合与重试降级 | `AsyncOpenAI` 流式读取、按 `tc.index` 拼接分片 `tool_calls`、支持 `reasoning_content`、未吐字前指数退避重试 + `fallback_model` 降级 | `agent/llm/__init__.py`<br>`agent/llm/provider.py` | 用模拟分片流可拼出完整工具调用；主模型超时重试耗尽后自动切换备用模型成功 | ⬜ |
+| **10.1** | AsyncLLM 流式聚合与重试降级 | `AsyncOpenAI` 流式读取、按 `tc.index` 拼接分片 `tool_calls`、支持 `reasoning_content`、未吐字前指数退避重试 + `fallback_model` 降级 | `agent/llm/__init__.py`<br>`agent/llm/provider.py` | 用模拟分片流可拼出完整工具调用；主模型超时重试耗尽后自动切换备用模型成功 | ✅ |
 | **10.2** | L1 Token 预算窗口与原子存储 | Token 估算（`tiktoken` + 启发式降级）、按 `USER` 轮次边界逆序裁剪、`sanitize()` 清除孤立 `tool` / 补全缺失结果、`mkstemp + os.replace` 原子写盘与 `session_id` 防穿越 | `agent/llm/token_counter.py`<br>`agent/state.py`<br>`agent/memory/store.py`<br>`agent/memory/window.py` | 30 轮含工具历史裁剪后第一条必为 `user` 且 `tool_calls` 100% 配对；`../etc/passwd` 被 `InvalidSessionId` 拦截 | ⬜ |
 | **10.3** | L2 异步滚动摘要 | 滑出窗口且未摘要消息超阈值时后台生成摘要、注入 System Prompt、`created_at` + `summarized_upto` 乐观锁防并发覆盖 | `agent/memory/summarizer.py`<br>`agent/memory/manager.py` | 历史超出窗口后自动触发摘要并注入上下文；旧快照再次 `commit` 不会覆盖新摘要 | ⬜ |
 | **10.4** | L3 跨会话长期记忆（BM25） | 按 `user_id` 隔离的事实库、中文单字+二元组与英文分词、BM25 相关性排序、`remember_fact` / `recall_facts` 工具集成 | `agent/memory/long_term.py`<br>`agent/tools/builtin.py` | 会话 A 存入用户偏好，新建会话 B 提问相关词能检索出该事实；不同 `user_id` 互相隔离 | ⬜ |
