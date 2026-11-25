@@ -1,7 +1,7 @@
 # 阶段 10 学习记录：AsyncLLM 流式聚合与 L1 / L2 / L3 分层记忆
 
 - **目标**：将同步阻塞的 `agent/llm.py` 升级为支持流式吐字、分片 `tool_calls` 聚合、指数退避重试与备用模型降级的 `AsyncLLM`；构建 Token 预算对齐窗口（L1）、乐观锁异步滚动摘要（L2）与按用户隔离的 BM25 跨会话长期记忆（L3）。
-- **阶段状态**：⏳ 进行中（已完成 **10.1**，准备开始 **10.2**）
+- **阶段状态**：⏳ 进行中（已完成 **10.1**、**10.2**，准备开始 **10.3**）
 
 ---
 
@@ -10,8 +10,8 @@
 | 环节 | 主题 | 状态 | 提交 Hash |
 | :---: | :--- | :---: | :--- |
 | 10.1 | AsyncLLM 流式聚合与重试降级 | ✅ 已完成 | `study(stage-10.1)` |
-| 10.2 | L1 Token 预算窗口与原子存储 | ⏳ 待开始 | - |
-| 10.3 | L2 异步滚动摘要 | ⬜ 待开始 | - |
+| 10.2 | L1 Token 预算窗口与原子存储 | ✅ 已完成 | `study(stage-10.2)` |
+| 10.3 | L2 异步滚动摘要 | ⏳ 待开始 | - |
 | 10.4 | L3 跨会话长期记忆（BM25） | ⬜ 待开始 | - |
 
 ---
@@ -46,14 +46,25 @@
 - **掌握情况与踩坑记录**：第 1 步因编辑器“折叠单子目录（Compact Folders）”功能误将 `__init__.py` 建在了 `agent/llm/__pycache__/` 内，触发了旧 `agent/llm.py` 遮蔽报 `'agent.llm' is not a package`；移回 `agent/llm/__init__.py` 后立即通过，第 2～5 步全部一次性零报错跑通！下一步进入 **10.2 L1 Token 预算窗口与原子存储**。
 
 ## 10.2 L1 Token 预算窗口与原子存储
-- **状态**：⏳ 待开始（准备进行第 1 步）
-- **预习知识点导览**（完成后补充实操细节与踩坑记录）：
-  - **Token 估算（`tiktoken` + 启发式降级）**：精确预算上下文 Token，摆脱粗暴的 `max_count=40` 按条裁剪。
-  - **轮次边界裁剪与 `sanitize()` 配对修复**：按 `USER` 边界逆序保留最近轮次，清除孤立 `tool` 或补全缺失结果，彻底杜绝 API 400 报错。
-  - **原子落盘与路径穿越防护**：使用 `mkstemp + os.replace` 防止写一半崩溃毁文件，拦截 `../etc/passwd` 等非法 `session_id`。
-- **改动文件**：`agent/llm/token_counter.py`、`agent/state.py`、`agent/memory/store.py`、`agent/memory/window.py`（待手敲）
+- **状态**：✅ 已完成（第 1～8 步全部验收通过，已退役旧单文件 `agent/memory.py`）
+- **改动文件**：`agent/llm/token_counter.py`、`agent/llm/__init__.py`、`agent/state.py`、`agent/memory/__init__.py`、`agent/memory/store.py`、`agent/memory/window.py`（并移除旧单文件 `agent/memory.py`）
+- **学习知识点详解（第 1～8 步全览）**：
+  1. **Token 估算器（`agent/llm/token_counter.py`）**：`@lru_cache(maxsize=1)` 懒加载 `tiktoken`，未安装时自动降级为中英文字符启发式估算（CJK × 0.6 + 其他 × 0.3 + 1），叠加每条消息固定开销与 `tool_calls` / `reasoning_content` 计费。
+  2. **会话检查点模型（`agent/state.py`）**：`RunStatus`（`IDLE` / `WAITING_APPROVAL`）、`PendingApproval` 与 `SessionState` 双向序列化（`to_record` / `from_record`），天然支持高危审批挂起与重启续关。
+  3. **防穿越存储协议、内存存储与旧版迁移（`agent/memory/store.py` 上半）**：`_SESSION_ID_RE` 正则拦截 `../etc/passwd` 抛出 `InvalidSessionId`；`SessionStore(Protocol)` 留好换库插座；`InMemorySessionStore` 用 `json.loads(json.dumps(raw))` 深拷贝隔离外部篡改；`load_legacy_messages()` 过滤旧版 `memory.json` 中的 `SYSTEM` 消息。
+  4. **原子落盘与异步线程池卸载（`agent/memory/store.py` 下半 `JsonFileSessionStore`）**：同目录 `tempfile.mkstemp(dir=path.parent, suffix=".tmp")` + `os.fdopen(fd, ...)` + `os.replace(tmp, path)` 防写一半崩溃损坏存档，`except BaseException` 清理 `.tmp` 残片；`load/save/delete` 经 `asyncio.to_thread` 卸载避免阻塞事件循环，`list_ids()` 用 `glob("*.json")` + `p.stem` 过滤草稿并排序。
+  5. **协议外科医生与轮次边界窗口（`agent/memory/window.py`）**：`turn_starts()` 以 `USER` 下标为界（兜底含 `0`）；`sanitize()` 维护待核销小票篮 `open_ids` 与内部闭包 `close_open()`，丢弃 `SYSTEM` 与孤儿 `tool`、自动为缺失回执补齐 `MISSING_TOOL_RESULT`；`ContextWindowBuilder.select()` 用 `zip(starts, starts[1:] + [len(messages)])` 错位拉链切轮次、`reversed(bounds)` 倒序装车，并通过 `start < len(messages)` 保证最新一轮始终保留。
+  6. **包门面统一导出**：在 `agent/llm/__init__.py` 补导出 Token 估算三函数，在 `agent/memory/__init__.py` 导出 L1 全家桶与 `__all__`。
 - **验收命令与结果**：
-- **掌握情况与踩坑记录**：
+  - 第 1 步：`has_tiktoken: False`、`empty: 0 | cn: 5 | en: 5`、`m1: 12 | m2_with_tool: 19 | total: 31`
+  - 第 2～3 步：`version: 2 | status: WAITING_APPROVAL | pending_ids: ['c_pay']`、`roundtrip_ok: True`
+  - 第 4 步：`blocked: True | isolated: True | ids: ['case_001'] | deleted: True`、`legacy_roles: ['user']`
+  - 第 5a 步：`files: ['cold_001.json'] | content: 零下18度告警 | missing: None | blocked: True`
+  - 第 5b 步：`empty_ids: []`、`ids1: ['a_case', 'b_case'] | msg: 压缩机停机`、`del: (True, False) | ids2: ['b_case']`
+  - 第 6 步：`starts: [0, 1, 3]`、`clean_seq: [('user', '冷柜坏了'), ('assistant', None), ('tool', 'c1'), ('tool', 'c2'), ('user', '怎么卡住了')]`、`patched_c2: True`
+  - 第 7 步（30 轮含工具裁剪）：`trimmed: True | first_role: user | paired: True | tokens<=250: True`、`kept_turns: 5 | tiny_keeps_last_turn: True`
+  - 第 8 步（端到端联合验收）：`legacy_removed: True`、`status: WAITING_APPROVAL | pending: ['c_pay']`、`window_roles: ['user', 'assistant', 'tool', 'user', 'assistant', 'tool'] | tokens: 60`
+- **掌握情况与踩坑记录**：第 4 步因 IDE 折叠目录曾误建在 `agent/memory/__pycache__/` 内，移回 `agent/memory/` 后第 4～8 步全部一次性零笔误通过！本节还正式沉淀了“全局定位上下游图 + 互动图解 + 文本图解 + 大白话逐方法精讲”的黄金教学节奏。下一步正式进入 **10.3 L2 异步滚动摘要**。
 
 ## 10.3 L2 异步滚动摘要
 - **状态**：⬜ 待开始
