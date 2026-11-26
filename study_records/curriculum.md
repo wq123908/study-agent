@@ -50,7 +50,7 @@
 | 环节 | 主题 | 核心知识点 | 涉及文件 | 验收标准 | 状态 |
 | :---: | :--- | :--- | :--- | :--- | :---: |
 | **11.1** | 统一事件流协议与护栏 | `AgentEvent`（`.to_dict()` / `.to_sse()`）、参数规范化哈希 `LoopGuard` 防死循环、输入合法性校验 | `agent/engine/__init__.py`<br>`agent/engine/events.py`<br>`agent/engine/guardrails.py` | 同参工具第二次调用被拦截并注入纠偏提示，达到上限触发熔断 | ✅ |
-| **11.2** | 异步状态机引擎与 HITL 检查点 | 单会话互斥、工作副本原子提交、触发 `HIGH_RISK` 保存 `PendingApproval` 挂起、`resume()` 批准/拒绝恢复、`max_steps` 无工具强制收尾 | `agent/engine/core.py`<br>`agent/factory.py` | 调用 `write_workspace_file` 时返回 `waiting_approval` 且未写磁盘；批准后执行写盘并完成对话；拒绝则回填拒绝通知 | ⬜ |
+| **11.2** | 异步状态机引擎与 HITL 检查点 | 单会话互斥、工作副本原子提交、触发 `HIGH_RISK` 保存 `PendingApproval` 挂起、`resume()` 批准/拒绝恢复、`max_steps` 无工具强制收尾 | `agent/engine/core.py`<br>`agent/factory.py` | 调用 `write_workspace_file` 时返回 `waiting_approval` 且未写磁盘；批准后执行写盘并完成对话；拒绝则回填拒绝通知 | ✅ |
 | **11.3** | 异步流式 CLI 升级 | 消费事件流实时打印思考/回答/工具状态、终端确认审批、`/session` `/state` `/trace` `/reset` 命令与旧 `memory.json` 迁移 | `main.py` | 启动 `python main.py` 可看到流式打字效果、工具卡片与终端审批交互，`/trace` 可看最近一次瀑布图 | ⬜ |
 | **11.4** | FastAPI + SSE Web 网关 | `StreamingResponse` SSE 推送、`/v1/chat/stream`、`/v1/chat`、`/v1/chat/approve`、会话管理与 API Key 鉴权 | `app/__init__.py`<br>`app/schemas.py`<br>`app/main.py` | `uvicorn app.main:app` 启动后，`curl -N` 可实时收到 `content_delta` 与 `approval_required` 事件并通过 `/v1/chat/approve` 恢复 | ⬜ |
 
