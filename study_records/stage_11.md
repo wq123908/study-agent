@@ -1,7 +1,7 @@
 # 阶段 11 学习记录：异步流式 ReAct 状态机、HITL 人工审批与 FastAPI SSE
 
 - **目标**：构建统一事件流协议与防死循环护栏；将同步阻塞的 `agent/core.py` 演进为支持单会话互斥、工作副本原子提交、高危工具挂起审批（Human-in-the-Loop）与恢复续关的异步状态机引擎；并分别对外提供异步流式 CLI 与 FastAPI + SSE Web 服务网关。
-- **阶段状态**：⏳ 进行中（已完成 **11.1**、**11.2**、**11.3**，准备开始 **11.4**）
+- **阶段状态**：✅ 已完成（**11.1 ～ 11.4** 全部验收通过，异步流式状态机、HITL 审批、CLI 与 FastAPI SSE 网关全面闭环）
 
 ---
 
@@ -11,8 +11,8 @@
 | :---: | :--- | :---: | :--- |
 | 11.1 | 统一事件流协议与护栏 | ✅ 已完成 | `23dcf74` |
 | 11.2 | 异步状态机引擎与 HITL 检查点 | ✅ 已完成 | `364face` |
-| 11.3 | 异步流式 CLI 升级 | ✅ 已完成 | `study(stage-11.3)` |
-| 11.4 | FastAPI + SSE Web 网关 | ⏳ 待开始 | - |
+| 11.3 | 异步流式 CLI 升级 | ✅ 已完成 | `18e472e` |
+| 11.4 | FastAPI + SSE Web 网关 | ✅ 已完成 | `study(stage-11.4)` |
 
 ---
 
@@ -67,7 +67,18 @@
 - **掌握情况与踩坑记录**：290 行新版 `main.py` 一把零失误通过！下一步进入阶段 11 收官战 **11.4 FastAPI + SSE Web 网关**。
 
 ## 11.4 FastAPI + SSE Web 网关
-- **状态**：⬜ 待开始
-- **预习知识点导览**：
-  - `StreamingResponse` SSE 实时推送、`/v1/chat/stream`、`/v1/chat`、`/v1/chat/approve`、会话管理接口与 API Key 鉴权中间件。
-- **改动文件**：`app/__init__.py`、`app/schemas.py`、`app/main.py`（待手敲）
+- **状态**：✅ 已完成（全接口 `TestClient` 联调零失误通过，耗时约 4 分钟：`2026-11-26 17:51 ~ 17:55`，阶段 11 圆满收官）
+- **改动文件**：`app/__init__.py`、`app/schemas.py`、`app/main.py`
+- **学习知识点详解**：
+  1. **网关入口 Pydantic 强校验（`app/schemas.py`）**：`ChatRequest` / `ApproveRequest` 在 HTTP 边界用正则 `^[A-Za-z0-9_\-]{1,64}$` 拦截非法 `session_id`、限制消息长度；`ChatResponse` 统一非流式返回契约。
+  2. **生产级 SSE 推送与 Nginx 防缓冲（`app/main.py`）**：`_sse_stream()` 封装 `StreamingResponse(..., media_type="text/event-stream")` 并附带 `X-Accel-Buffering: no`、`Cache-Control: no-cache`、`Connection: keep-alive`，杜绝反向代理攒包卡顿。
+  3. **应用工厂、优雅停机与双通道鉴权**：`create_app(agent=None, config=None)` 支持生产 `lifespan` 自动装配与关机 `wait_background()`，同时允许测试直接注入内存假引擎；`verify_api_key` 兼容 `X-API-Key` 与 `Authorization: Bearer` 两种令牌且不拦 `/healthz`。
+  4. **完整 6 端点契约**：`GET /healthz`、`POST /v1/chat/stream`、`POST /v1/chat`、`POST /v1/chat/approve`（支持 `stream=True/False` 双模式）、`GET/DELETE /v1/sessions/{session_id}`。
+- **验收命令与结果**：
+  - `TestClient` 全链路自动化验收全部通过：
+    - `1_health: ok | tools_count: 5 | unauth_code: 401`
+    - `2_sse: True | no_buf: no | has_approval_ev: True`
+    - `3_approve: done | content: 报告已写入完成 | file: 冷链审核通过`
+    - `4_session: 4 | deleted: True`
+  - 结构化日志成功自动注入 `trace_id`（`8d0e6f5ccc71`）。
+- **掌握情况与踩坑记录**：三个文件零笔误一把过！阶段 11 全线通关，下一步进入通用底层框架的最后一关 **阶段 12：自动化测试套件与回归评测流水线**。
