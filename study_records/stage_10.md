@@ -1,7 +1,7 @@
 # 阶段 10 学习记录：AsyncLLM 流式聚合与 L1 / L2 / L3 分层记忆
 
 - **目标**：将同步阻塞的 `agent/llm.py` 升级为支持流式吐字、分片 `tool_calls` 聚合、指数退避重试与备用模型降级的 `AsyncLLM`；构建 Token 预算对齐窗口（L1）、乐观锁异步滚动摘要（L2）与按用户隔离的 BM25 跨会话长期记忆（L3）。
-- **阶段状态**：⏳ 进行中（已完成 **10.1**、**10.2**，准备开始 **10.3**）
+- **阶段状态**：⏳ 进行中（已完成 **10.1**、**10.2**、**10.3**，准备开始 **10.4**）
 
 ---
 
@@ -9,10 +9,10 @@
 
 | 环节 | 主题 | 状态 | 提交 Hash |
 | :---: | :--- | :---: | :--- |
-| 10.1 | AsyncLLM 流式聚合与重试降级 | ✅ 已完成 | `study(stage-10.1)` |
-| 10.2 | L1 Token 预算窗口与原子存储 | ✅ 已完成 | `study(stage-10.2)` |
-| 10.3 | L2 异步滚动摘要 | ⏳ 待开始 | - |
-| 10.4 | L3 跨会话长期记忆（BM25） | ⬜ 待开始 | - |
+| 10.1 | AsyncLLM 流式聚合与重试降级 | ✅ 已完成 | `b6c5b60` |
+| 10.2 | L1 Token 预算窗口与原子存储 | ✅ 已完成 | `44c089a` |
+| 10.3 | L2 异步滚动摘要 | ✅ 已完成 | `study(stage-10.3)` |
+| 10.4 | L3 跨会话长期记忆（BM25） | ⏳ 待开始 | - |
 
 ---
 
@@ -67,13 +67,24 @@
 - **掌握情况与踩坑记录**：第 4 步因 IDE 折叠目录曾误建在 `agent/memory/__pycache__/` 内，移回 `agent/memory/` 后第 4～8 步全部一次性零笔误通过！本节还正式沉淀了“全局定位上下游图 + 互动图解 + 文本图解 + 大白话逐方法精讲”的黄金教学节奏。下一步正式进入 **10.3 L2 异步滚动摘要**。
 
 ## 10.3 L2 异步滚动摘要
-- **状态**：⬜ 待开始
-- **预习知识点导览**（完成后补充实操细节与踩坑记录）：
-  - **滑窗触发与 System Prompt 注入**：被窗口裁掉且尚未摘要的历史超过阈值时后台压缩成滚动摘要，保持长对话记忆连贯。
-  - **乐观锁防并发覆盖（`created_at` + `summarized_upto`）**：防止旧快照回写时覆盖掉更新的摘要结果。
-- **改动文件**：`agent/memory/summarizer.py`、`agent/memory/manager.py`（待手敲）
+- **状态**：✅ 已完成（全部模块一次性零失误验收通过，耗时约 33 分钟：`2026-11-26 14:53 ~ 15:26`）
+- **改动文件**：`agent/memory/summarizer.py`、`agent/memory/manager.py`、`agent/memory/__init__.py`
+- **学习知识点详解**：
+  1. **紧凑剧本转换与滚雪球压缩（`agent/memory/summarizer.py`）**：
+     - `render_transcript(messages, tool_preview=200)` 将多角色消息（含 `tool_calls` 与 `content` 并列共存的 `ASSISTANT` 消息）摊平为省 Token 纯文本剧本，`TOOL` 名称缺省回退 `tool_call_id` 并截断前 200 字防巨型工具返回撑爆请求；
+     - `Summarizer.summarize()` 复用 10.1 `LLMClient.complete(..., temperature=0.1)` 低温合并“已有摘要 + 新增对话”，并通过 `text[: self.max_chars * 2]` 代码级硬截断防止模型输出失控膨胀。
+  2. **记忆门面与单会话隔离并发（`agent/memory/manager.py`）**：
+     - `MemoryManager` 统一编排 L1 存储/滑窗、L2 摘要与 10.4 L3 长期记忆插座；
+     - `lock(session_id)` 按会话隔离互斥锁（不同会话并行不阻塞），`_tasks: set[asyncio.Task]` 强引用后台摘要任务并配合 `add_done_callback(self._tasks.discard)` 防 GC 误杀与内存泄漏；
+     - `build_context()` 按顺序把 L2 摘要与 L3 长期记忆拼入 `system_text`，先算 `reserved = count_text_tokens(system_text) + 4` 再让 L1 滑窗填满剩余预算，并打上 `span("memory", "build_context")` 追踪埋点。
+  3. **双向乐观锁防并发覆盖**：
+     - **防线 A（`commit()`）**：前台提交前加锁重读磁盘 `stored`，若同场会话（`created_at` 相同）且磁盘摘要更超前（`stored.summarized_upto > state.summarized_upto`），先抄回新摘要再存盘，防止旧快照拍空后台新摘要；
+     - **防线 B（`summarize_if_needed()`）**：在锁外异步调摘要模型（不阻塞前台聊天），算完后再加锁重读 `fresh` 做四重校验（非空、`created_at` 未变、`summarized_upto` 未变、`len(fresh.messages) >= end`），彻底拦截 `/reset` 或同 ID 重建会话引发的僵尸摘要污染。
 - **验收命令与结果**：
-- **掌握情况与踩坑记录**：
+  - `summarizer.py`（剧本转换 + 滚雪球压缩）：8 行剧本与截断输出全达标；假模型实测 `r1: '- F01超温40m'`、`temp: 0.1 | has_wu: True`、`has_old: True | clipped_len: 20`；
+  - `manager.py`（异步摘要 + System 注入 + 防线 A）：`1_summary: 汇总:F01冷柜超温40分钟 | upto: 10`、`2_injected: True`、`3_guard_commit: True`、`4_clear_guard: True | after_clear_updated: False`；
+  - 10.3 端到端总验收（顶层导出 + Trace 穿透 + 防线 B 同 ID 重建拦截）：`1_trace_spans: [('memory', 'summarize'), ('memory', 'build_context')] | ok1: True`、`2_bundle_has_summary: True`、`3_race_blocked: True`。
+- **掌握情况与踩坑记录**：业务代码全程零笔误一把过！过程中顺带排查出新开 PowerShell 下 `python` 被 WindowsApps 商店空壳截胡（改用 `py` 直连 `Python313`，且发现本机已安装 `tiktoken`），以及复习了 Python 分号后不可接复合语句（`async def`）的语法细节。从本节起升级为“按完整内聚模块推进”的更流畅节奏。下一步直接进入 **10.4 L3 跨会话长期记忆（BM25）**。
 
 ## 10.4 L3 跨会话长期记忆（BM25）
 - **状态**：⬜ 待开始
