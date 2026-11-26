@@ -1,7 +1,7 @@
 # 阶段 11 学习记录：异步流式 ReAct 状态机、HITL 人工审批与 FastAPI SSE
 
 - **目标**：构建统一事件流协议与防死循环护栏；将同步阻塞的 `agent/core.py` 演进为支持单会话互斥、工作副本原子提交、高危工具挂起审批（Human-in-the-Loop）与恢复续关的异步状态机引擎；并分别对外提供异步流式 CLI 与 FastAPI + SSE Web 服务网关。
-- **阶段状态**：⏳ 进行中（已完成 **11.1**、**11.2**，准备开始 **11.3**）
+- **阶段状态**：⏳ 进行中（已完成 **11.1**、**11.2**、**11.3**，准备开始 **11.4**）
 
 ---
 
@@ -10,9 +10,9 @@
 | 环节 | 主题 | 状态 | 提交 Hash |
 | :---: | :--- | :---: | :--- |
 | 11.1 | 统一事件流协议与护栏 | ✅ 已完成 | `23dcf74` |
-| 11.2 | 异步状态机引擎与 HITL 检查点 | ✅ 已完成 | `study(stage-11.2)` |
-| 11.3 | 异步流式 CLI 升级 | ⏳ 待开始 | - |
-| 11.4 | FastAPI + SSE Web 网关 | ⬜ 待开始 | - |
+| 11.2 | 异步状态机引擎与 HITL 检查点 | ✅ 已完成 | `364face` |
+| 11.3 | 异步流式 CLI 升级 | ✅ 已完成 | `study(stage-11.3)` |
+| 11.4 | FastAPI + SSE Web 网关 | ⏳ 待开始 | - |
 
 ---
 
@@ -56,11 +56,15 @@
 - **掌握情况与踩坑记录**：718 行核心异步状态机引擎一次性手敲零 Bug 通关！顺带积累了 Windows PowerShell 5.1 用 `py -c` 传空双引号 `""` 被 Win32 解析器吞引号的排错经验（改用 `$OutputEncoding = [Text.Encoding]::UTF8; @' ... '@ | py -` 完美免疫）。下一步进入 **11.3 异步流式 CLI 升级（`main.py`）**。
 
 ## 11.3 异步流式 CLI 升级
-- **状态**：⬜ 待开始
-- **预习知识点导览**：
-  - 异步消费 `AgentEvent` 实时打印思考折叠/流式吐字/工具卡片与终端 HITL 审批确认；
-  - 支持 `/session` `/state` `/trace` `/reset` 命令与旧 `memory.json` 迁移。
-- **改动文件**：`main.py`（待手敲）
+- **状态**：✅ 已完成（一次性零失误验收通过，耗时约 4 分钟：`2026-11-26 17:47 ~ 17:51`）
+- **改动文件**：`main.py`
+- **学习知识点详解**：
+  1. **非阻塞异步输入（`loop.run_in_executor(None, input, ...)`）**：避免同步 `input()` 阻塞 `asyncio` 事件循环，确保用户思考打字期间后台 L2 滚动摘要协程能正常并发运行；退出时在 `finally` 中调用 `await agent.memory.wait_background()` 优雅停机。
+  2. **流式事件渲染与递归 HITL 审批（`_consume` / `_render_event` / `_handle_approval`）**：`flush=True` 实时逐字输出思考与回答、渲染工具耗时卡片与完成账单；遇到 `APPROVAL_REQUIRED` 挂起后终端询问 `y/n` 并递归消费 `agent.resume()` 事件流，天然支持连续多轮高危审批。
+  3. **会话斜杠命令与旧数据无损迁移**：实现 `/session <id>`、`/state`、`/trace`（直接调 `render_waterfall` 输出终端 ASCII 瀑布图）、`/reset` 与 `_migrate_legacy_memory()` 自动迁移阶段 4 遗留的 `memory.json`。
+- **验收命令与结果**：
+  - 离线模拟完整流程验收通过：实时输出思考/工具/回答/完成栏，`/session cold_01`、`/state`、`/trace`（成功渲染 `step-1`/`memory:build_context`/`tool:calculator`/`step-2` 瀑布图）与 `/reset` 全部正常，`OK_NEW_SID: cold_01 | AFTER_RESET_MSGS: 0`。
+- **掌握情况与踩坑记录**：290 行新版 `main.py` 一把零失误通过！下一步进入阶段 11 收官战 **11.4 FastAPI + SSE Web 网关**。
 
 ## 11.4 FastAPI + SSE Web 网关
 - **状态**：⬜ 待开始
