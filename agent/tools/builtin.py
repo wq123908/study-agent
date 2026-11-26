@@ -99,6 +99,51 @@ def register_builtin_tools(registry: ToolRegistry) -> ToolRegistry:
     ) -> str:
         """计算数学表达式，支持 + - * / // % ** 括号，以及 sqrt/abs/round/min/max/log/sin/cos/tan 和常量 pi/e。"""
         return calculator(expression)
+
+    @registry.tool(
+        risk_level=RiskLevel.WRITE,
+        timeout=5,
+    )
+    def remember_fact(
+        fact: Annotated[
+            str,
+            Field(
+                description="需要长期记住的关于用户的事实或偏好，一句话",
+                max_length=300,
+            ),
+        ],
+        ctx: ToolContext,
+    ) -> str:
+        """把关于用户的长期事实/偏好写入长期记忆（跨会话可用）。仅在用户明确要求记住，或透露稳定的个人偏好时使用。"""
+        if ctx.long_term is None:
+            return "长期记忆未启用"
+        added = ctx.long_term.add(
+            ctx.user_id,
+            fact,
+        )
+        return "已记住" if added else "该事实已存在，无需重复记忆"
+
+    @registry.tool(
+        risk_level=RiskLevel.READ_ONLY,
+        timeout=5,
+    )
+    def recall_facts(
+        query: Annotated[
+            str,
+            Field(description="检索关键词"),
+        ],
+        ctx: ToolContext,
+    ) -> str:
+        """从长期记忆中检索与关键词相关的用户事实。"""
+        if ctx.long_term is None:
+            return "长期记忆未启用"
+        hits = ctx.long_term.search(
+            ctx.user_id,
+            query,
+            top_k=5,
+        )
+        return "\n".join(f"- {h}" for h in hits) if hits else "没有相关记忆"
+
     @registry.tool(
         risk_level=RiskLevel.HIGH_RISK,
         timeout=5,

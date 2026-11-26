@@ -1,4 +1,8 @@
-"""分层记忆子包：统一导出 L1 会话存储、上下文窗口、L2 滚动摘要与记忆门面。"""
+"""分层记忆子包：统一导出 L1 会话存储、上下文窗口、L2 滚动摘要、L3 长期记忆与记忆门面。"""
+from agent.memory.long_term import (
+    LongTermMemory,
+    tokenize,
+)
 from agent.memory.manager import (
     ContextBundle,
     MemoryManager,
@@ -30,6 +34,7 @@ __all__ = [
     "InMemorySessionStore",
     "InvalidSessionId",
     "JsonFileSessionStore",
+    "LongTermMemory",
     "MISSING_TOOL_RESULT",
     "MemoryManager",
     "SUMMARY_PROMPT",
@@ -39,6 +44,7 @@ __all__ = [
     "load_legacy_messages",
     "render_transcript",
     "sanitize",
+    "tokenize",
     "turn_starts",
     "validate_session_id",
 ]

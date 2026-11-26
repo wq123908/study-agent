@@ -6,7 +6,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from typing import Any
-
+from agent.memory.long_term import LongTermMemory
 from agent.llm.token_counter import count_messages_tokens, count_text_tokens
 from agent.memory.store import SessionStore, validate_session_id
 from agent.memory.summarizer import Summarizer
@@ -34,7 +34,7 @@ class MemoryManager:
         store: SessionStore,
         window: ContextWindowBuilder,
         summarizer: Summarizer | None = None,
-        long_term: Any | None = None,
+        long_term: LongTermMemory | None = None,
         summary_trigger_tokens: int = 1500,
         long_term_top_k: int = 3,
         background_summary: bool = True,

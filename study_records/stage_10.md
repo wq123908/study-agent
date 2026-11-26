@@ -1,7 +1,7 @@
 # 阶段 10 学习记录：AsyncLLM 流式聚合与 L1 / L2 / L3 分层记忆
 
 - **目标**：将同步阻塞的 `agent/llm.py` 升级为支持流式吐字、分片 `tool_calls` 聚合、指数退避重试与备用模型降级的 `AsyncLLM`；构建 Token 预算对齐窗口（L1）、乐观锁异步滚动摘要（L2）与按用户隔离的 BM25 跨会话长期记忆（L3）。
-- **阶段状态**：⏳ 进行中（已完成 **10.1**、**10.2**、**10.3**，准备开始 **10.4**）
+- **阶段状态**：✅ 已完成（**10.1 ～ 10.4** 全部验收通过，异步流式 LLM 与 L1/L2/L3 分层记忆全面闭环）
 
 ---
 
@@ -11,8 +11,8 @@
 | :---: | :--- | :---: | :--- |
 | 10.1 | AsyncLLM 流式聚合与重试降级 | ✅ 已完成 | `b6c5b60` |
 | 10.2 | L1 Token 预算窗口与原子存储 | ✅ 已完成 | `44c089a` |
-| 10.3 | L2 异步滚动摘要 | ✅ 已完成 | `study(stage-10.3)` |
-| 10.4 | L3 跨会话长期记忆（BM25） | ⏳ 待开始 | - |
+| 10.3 | L2 异步滚动摘要 | ✅ 已完成 | `c98dbc4` |
+| 10.4 | L3 跨会话长期记忆（BM25） | ✅ 已完成 | `study(stage-10.4)` |
 
 ---
 
@@ -87,10 +87,17 @@
 - **掌握情况与踩坑记录**：业务代码全程零笔误一把过！过程中顺带排查出新开 PowerShell 下 `python` 被 WindowsApps 商店空壳截胡（改用 `py` 直连 `Python313`，且发现本机已安装 `tiktoken`），以及复习了 Python 分号后不可接复合语句（`async def`）的语法细节。从本节起升级为“按完整内聚模块推进”的更流畅节奏。下一步直接进入 **10.4 L3 跨会话长期记忆（BM25）**。
 
 ## 10.4 L3 跨会话长期记忆（BM25）
-- **状态**：⬜ 待开始
-- **预习知识点导览**（完成后补充实操细节与踩坑记录）：
-  - **多用户隔离事实库 + 中英文分词（单字/二元组）+ BM25 排序**：零外部向量库依赖实现高质量跨会话事实检索。
-  - **工具层集成**：把 `remember_fact` / `recall_facts` 接入 `agent/tools/builtin.py` 并通过 `ToolContext.long_term` 注入。
-- **改动文件**：`agent/memory/long_term.py`、`agent/tools/builtin.py`（待手敲）
+- **状态**：✅ 已完成（全链路联调验收通过，耗时约 40 分钟：`2026-11-26 15:26 ~ 16:06`，阶段 10 圆满收官）
+- **改动文件**：`agent/memory/long_term.py`、`agent/tools/builtin.py`、`agent/memory/manager.py`、`agent/memory/__init__.py`
+- **学习知识点详解**：
+  1. **零依赖中英文分词与 Okapi BM25 检索（`agent/memory/long_term.py`）**：
+     - `tokenize()` 将英文/数字按小写整词切分，连续汉字同时切出**单字（保底召回）+ 二元组 Bigram（锁准词义）**，零第三方分词/向量库依赖实现精准中文匹配；
+     - `LongTermMemory` 按 `user_id` 隔离事实库，使用 `threading.Lock` 保护跨线程并发（适配同步工具在 `asyncio.to_thread` 线程池中运行），通过 `.tmp` + `replace()` 原子落盘，并在 `add()` 中做精确去重；
+     - `search()` 当用户事实数 `<= top_k` 时直接全返回避免漏记，否则计算 BM25+（`k1=1.5` 控制词频饱和、`b=0.75` 控制长度归一化、`math.log(1 + ...)` 保证 IDF 非负）并按 `(-score, idx)` 稳定排序返回 Top-K。
+  2. **两条腿走路与 `ToolContext` 权限隔离（`agent/tools/builtin.py`、`agent/memory/manager.py`）**：
+     - 被动自动注入：`MemoryManager.build_context()` 正式以强类型 `LongTermMemory` 接入 L3，每轮自动召回 Top-3 事实挂载到 `【关于该用户的长期记忆】`；
+     - 主动记忆工具：注册 `remember_fact`（`RiskLevel.WRITE`，`fact` 上限 300 字）与 `recall_facts`（`RiskLevel.READ_ONLY`，`top_k=5`），通过 `ctx: ToolContext` 隐式注入 `ctx.user_id` 与 `ctx.long_term`，对大模型隐藏身份字段，彻底杜绝跨用户越权读写。
 - **验收命令与结果**：
-- **掌握情况与踩坑记录**：
+  - `long_term.py` 独立验收：`1_tokens: ['python313', '冷', '链', '冷链']`、`2_dedup: True False | total_u1: 5`、`3_top2: ['冷柜超温30分钟按条款3.2定责', '门店A01位于郑州常用F01冷柜']`、`4_isolated: ['别人家的机密偏好'] | u3: []`；
+  - 阶段 10 大收官联调验收：`1_schema_hides_ctx: ['fact'] ['query']`、`2_remember: 已记住 | 该事实已存在，无需重复记忆`、`3_cross_session_inject: True | facts: ['门店A01使用F01冷柜且偏好晚上配送']`、`4_recall_same_user: - 门店A01使用F01冷柜且偏好晚上配送`、`5_user_isolated: 没有相关记忆 | other_facts: []`。
+- **掌握情况与踩坑记录**：`long_term.py` 149 行一次性零错误通过；接入 `builtin.py` 时误把 `remember_fact` 插在原 `write_workspace_file` 的 `@registry.tool(HIGH_RISK)` 装饰器下方导致重复注册，触发了 9.4 自研的 `ValueError: 工具 'remember_fact' 重复注册` 防呆校验，挪回装饰器位置后秒过！阶段 10 全线通关，下一步开启 **阶段 11：异步流式 ReAct 状态机、HITL 人工审批与 FastAPI SSE**。
