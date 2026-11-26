@@ -11,8 +11,8 @@
 - **后续业务实战分支**：`feat/coldchain-agent`（已建立并归档目标岗位 JD、《供应链冷链异常履约与协同 Agent》12 页 PDF 原件、完整 Markdown 转写版及 2026-11-22 路线决策聊天记录；详见 [`./coldchain_agent/README.md`](./coldchain_agent/README.md)）
 - **对照参考分支**：`main`（Tag `v0.2.0`，包含 9～12 阶段成品实现，仅作对照参考，不直接覆盖当前分支）
 - **当前已完成**：阶段 1 ～ 阶段 11（基础版 + 阶段 9 工具与 Trace 底座 + 阶段 10 AsyncLLM 与三级记忆 + 阶段 11 异步状态机、HITL 审批、流式 CLI 与 FastAPI SSE 网关）
-- **正在进行**：**阶段 12 —— 离线单测套件与自动化回归评测流水线**（准备开始 `12.1`）
-- **下一个待做环节**：**12.1 离线单元测试与端到端测试**（`pyproject.toml`、`tests/conftest.py` 共享 `ScriptedLLM` 与全模块自动化单测；见 [`stage_12.md`](./stage_12.md)）
+- **正在进行**：**阶段 12 —— 离线单测套件与自动化回归评测流水线**（已完成 `12.1`，准备开始最后一战 `12.2`）
+- **下一个待做环节**：**12.2 黄金评测集与门禁流水线**（`eval/datasets/golden_cases.jsonl`、`eval/run_eval.py` 确定性回放与 `--live` 实测、四项 SLA 指标与 `FaultInjector` 混沌自愈门禁；见 [`stage_12.md`](./stage_12.md)）
 - **总体两步走战略**：
   1. **第一步（当前主线）**：在 `study/stage-9-12` 完整敲完阶段 10～12，让通用 Agent 基层框架 100% 闭环收官（讲解时用大白话，并顺带点明每个模块在后续供应链冷链 Agent 中的业务用法）；
   2. **第二步（业务分支）**：12 阶段完成后切至 `feat/coldchain-agent` 分支，在基层框架之上落地《供应链冷链异常履约与协同 Agent》（详见 [`./coldchain_agent/README.md`](./coldchain_agent/README.md) 与 [`./coldchain_agent/coldchain_agent_sdd.md`](./coldchain_agent/coldchain_agent_sdd.md)）。
@@ -44,7 +44,7 @@
 | 阶段 9 | 基线修复、声明式安全工具层与全链路 Trace 底座 | ✅ 已完成 | [`stage_09.md`](./stage_09.md) | `f40398e` ～ `ed3f972` |
 | 阶段 10 | AsyncLLM 流式聚合与 L1/L2/L3 分层记忆 | ✅ 已完成 | [`stage_10.md`](./stage_10.md) | `b6c5b60` ～ `study(stage-10.4)` |
 | 阶段 11 | 异步流式 ReAct 状态机、HITL 审批与 FastAPI SSE | ✅ 已完成 | [`stage_11.md`](./stage_11.md) | `23dcf74` ～ `study(stage-11.4)` |
-| 阶段 12 | 离线单测套件与自动化回归评测流水线 | ⏳ 进行中（待 12.1） | [`stage_12.md`](./stage_12.md) | - |
+| 阶段 12 | 离线单测套件与自动化回归评测流水线 | ⏳ 进行中（已完成 12.1，待 12.2） | [`stage_12.md`](./stage_12.md) | `study(stage-12.1)` |
 | **业务实战篇**<br>（`feat/coldchain-agent`） | **供应链冷链异常履约与协同 Agent（ColdChain-Agent）**<br>（5 张业务表 + 7 个插件 + 条款级 RAG + 7 节点混合控制状态机与 HITL + 40 条黄金评测） | 🗂️ 已立项归档（待阶段 12 收官后切分支实施） | [`./coldchain_agent/README.md`](./coldchain_agent/README.md)<br>[`./coldchain_agent/coldchain_agent_sdd.md`](./coldchain_agent/coldchain_agent_sdd.md) | - |
 
 ---
