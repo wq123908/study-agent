@@ -61,4 +61,4 @@
 | 环节 | 主题 | 核心知识点 | 涉及文件 | 验收标准 | 状态 |
 | :---: | :--- | :--- | :--- | :--- | :---: |
 | **12.1** | 离线单元测试与端到端测试 | `ScriptedLLM` 假大脑、`TestClient` 接口测试、覆盖工具/记忆/状态机/重试降级（避开 `httpx2` 拼写坑） | `tests/conftest.py`<br>`tests/test_*.py`<br>`pyproject.toml` | 运行 `pytest -q` 全部测试离线通过 | ✅ |
-| **12.2** | 黄金评测集与门禁流水线 | `ReplayLLM` 确定性回放 + `--live` 实测、轨迹召回率/非法工具率/忠实度/`FaultInjector` 混沌自愈门禁报表 | `eval/__init__.py`<br>`eval/datasets/golden_cases.jsonl`<br>`eval/run_eval.py` | 运行 `python -m eval.run_eval` 输出四项指标且全部达标 `PASSED` | ⬜ |
+| **12.2** | 黄金评测集与门禁流水线 | `ReplayLLM` 确定性回放 + `--live` 实测、轨迹召回率/非法工具率/忠实度/`FaultInjector` 混沌自愈门禁报表 | `eval/__init__.py`<br>`eval/datasets/golden_cases.jsonl`<br>`eval/run_eval.py` | 运行 `python -m eval.run_eval` 输出四项指标且全部达标 `PASSED` | ✅ |

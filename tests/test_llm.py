@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import httpx
 import openai
 import pytest
-
+from eval.run_eval import run_suite
 from agent.config import Config, ConfigError
 from agent.llm.provider import AsyncLLM, LLMError
 from agent.observability.tracer import (
@@ -246,3 +246,11 @@ def test_config_validation():
             api_key="k",
             context_max_tokens=100,
         ).validate()
+
+async def test_golden_evaluation_suite_passes_all_sla_gates():
+    summary = await run_suite()
+    assert summary["passed"] is True
+    assert summary["trajectory_recall"] >= 0.95
+    assert summary["illegal_tool_rate"] == 0.0
+    assert summary["avg_faithfulness"] >= 4.5
+    assert summary["resilience_rate"] >= 0.85
