@@ -7,12 +7,12 @@
 
 ## 1. 当前状态快照（随时更新）
 
-- **当前主线 Git 分支**：`study/stage-9-12`（基于 `v0.1.0-basic` 切出，推进阶段 9～12 通用 Agent 基层框架）
-- **后续业务实战分支**：`feat/coldchain-agent`（已建立并归档目标岗位 JD、《供应链冷链异常履约与协同 Agent》12 页 PDF 原件、完整 Markdown 转写版及 2026-11-22 路线决策聊天记录；详见 [`./coldchain_agent/README.md`](./coldchain_agent/README.md)）
-- **对照参考分支**：`main`（Tag `v0.2.0`，包含 9～12 阶段成品实现，仅作对照参考，不直接覆盖当前分支）
-- **当前已完成**：🏆 **阶段 1 ～ 阶段 12 全部 100% 通关收官**（通用企业级 AI Agent 底层框架全面闭环：`51 passed` + 12 道黄金评测四项 SLA 100% 达标，仓库已清理全部历史遗留旧文件）
+- **当前主线 Git 分支**：`main`（已由 `study/stage-9-12` 晋升为最新主分支并推送至 GitHub，原参考快照保留在 Tag `v0.2.0`）
+- **后续业务实战分支**：`feat/coldchain-agent`（已同步快进至最新 `main`，归档目标岗位 JD、《供应链冷链异常履约与协同 Agent》12 页 PDF 原件、完整 Markdown 转写版及 2026-11-22 路线决策聊天记录；详见 [`./coldchain_agent/README.md`](./coldchain_agent/README.md)）
+- **对照参考标签**：Tag `v0.2.0`（保留早期对照参考快照）
+- **当前已完成**：🏆 **阶段 1 ～ 阶段 12 全部 100% 通关 + Web 对话工作台上线**（通用企业级 AI Agent 底层框架全面闭环：`52 passed` + 12 道黄金评测四项 SLA 100% 达标 + `app/static/index.html` 单页流式对话与 HITL 审批界面）
 - **正在进行**：准备进入**第二步：业务实战篇**
-- **下一个待做环节**：将 `study/stage-9-12` 合并入业务分支 `feat/coldchain-agent`，基于自研底层框架正式落地《供应链冷链异常履约与协同 Agent》（5 张业务表 + 7 大插件 + 条款级 RAG + 7 节点混合控制与 HITL + 40 条冷链黄金评测；详见 [`./coldchain_agent/README.md`](./coldchain_agent/README.md) 与 [`./coldchain_agent/coldchain_agent_sdd.md`](./coldchain_agent/coldchain_agent_sdd.md)）
+- **下一个待做环节**：切换至已同步最新底座的 `feat/coldchain-agent` 分支，基于自研底层框架正式落地《供应链冷链异常履约与协同 Agent》（5 张业务表 + 7 大插件 + 条款级 RAG + 7 节点混合控制与 HITL + 40 条冷链黄金评测；详见 [`./coldchain_agent/README.md`](./coldchain_agent/README.md) 与 [`./coldchain_agent/coldchain_agent_sdd.md`](./coldchain_agent/coldchain_agent_sdd.md)）
 - **总体两步走战略**：
   1. **第一步（当前主线）**：在 `study/stage-9-12` 完整敲完阶段 10～12，让通用 Agent 基层框架 100% 闭环收官（讲解时用大白话，并顺带点明每个模块在后续供应链冷链 Agent 中的业务用法）；
   2. **第二步（业务分支）**：12 阶段完成后切至 `feat/coldchain-agent` 分支，在基层框架之上落地《供应链冷链异常履约与协同 Agent》（详见 [`./coldchain_agent/README.md`](./coldchain_agent/README.md) 与 [`./coldchain_agent/coldchain_agent_sdd.md`](./coldchain_agent/coldchain_agent_sdd.md)）。

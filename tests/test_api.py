@@ -135,3 +135,23 @@ def test_api_key_authentication(
         headers={"X-API-Key": "secret-token"},
     )
     assert ok1.status_code == 200 and ok1.json()["content"] == "通过鉴权"
+
+
+def test_web_ui_and_list_sessions(make_agent):
+    agent = make_agent(["你好"])
+    client = TestClient(create_app(agent))
+
+    page = client.get("/")
+    assert page.status_code == 200
+    assert "study-agent" in page.text
+
+    client.post(
+        "/v1/chat",
+        json={
+            "session_id": "ui_demo",
+            "message": "你好",
+        },
+    )
+    listed = client.get("/v1/sessions")
+    assert listed.status_code == 200
+    assert "ui_demo" in listed.json()["sessions"]

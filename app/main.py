@@ -8,10 +8,11 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncIterator
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from agent import __version__
 from agent.config import Config, load_config
@@ -20,6 +21,8 @@ from agent.factory import build_agent
 from agent.memory import InvalidSessionId
 from agent.observability import setup_logging
 from app.schemas import ApproveRequest, ChatRequest, ChatResponse
+
+STATIC_INDEX = Path(__file__).parent / "static" / "index.html"
 
 SSE_HEADERS = {
     "Cache-Control": "no-cache",
@@ -88,12 +91,28 @@ def create_app(
                 detail="Invalid or missing API key",
             )
 
+    @app.get(
+        "/",
+        include_in_schema=False,
+    )
+    async def index() -> FileResponse:
+        return FileResponse(STATIC_INDEX)
+
     @app.get("/healthz")
     async def healthz(ag: Agent = Depends(get_agent)) -> dict:
         return {
             "status": "ok",
             "version": __version__,
             "tools": ag.executor.registry.names(),
+        }
+
+    @app.get(
+        "/v1/sessions",
+        dependencies=[Depends(verify_api_key)],
+    )
+    async def list_sessions(ag: Agent = Depends(get_agent)) -> dict:
+        return {
+            "sessions": await ag.memory.store.list_ids(),
         }
 
     @app.post(
