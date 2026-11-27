@@ -1,6 +1,6 @@
 # 阶段 13 学习记录
 
-阶段主题为独立运行记录与结构化任务契约。文档准备于 2026-11-27，当前状态为 **文档已就绪，代码待开始**。
+阶段主题为独立运行记录与结构化任务契约。文档准备于 2026-11-27，当前状态为 **进行中（已完成 13.1，接续 13.2）**。
 
 ## 目标与全局位置
 
@@ -26,8 +26,8 @@ V1.0 的 `SessionState` 保存一个会话的消息、摘要与待审批信息�
 
 | 环节 | 主题 | 状态 | 实际提交 |
 | --- | --- | --- | --- |
-| 13.1 | 独立运行记录 | 待开始，当前接续点 | 待实际完成后填写 |
-| 13.2 | 结构化任务输入 | 待开始 | 待实际完成后填写 |
+| 13.1 | 独立运行记录 | ✅ 已完成 | `study(stage-13.1)` |
+| 13.2 | 结构化任务输入 | ⏳ 待开始，当前接续点 | 待实际完成后填写 |
 | 13.3 | 任务结果与产物引用 | 待开始 | 待实际完成后填写 |
 | 13.4 | 契约联验与 V1.0 回归 | 待开始 | 待实际完成后填写 |
 
@@ -73,13 +73,13 @@ V1.0 的 `SessionState` 保存一个会话的消息、摘要与待审批信息�
 
 | 项目 | 记录 |
 | --- | --- |
-| 当前子步骤 | 13.1a 待开始 |
-| 实际改动文件 | 待用户录入后填写 |
-| 实际命令与输出 | 待执行后填写 |
-| 问题与修复 | 待实际发生后填写 |
-| 掌握情况 | 待复盘 |
-| 下一步 | 先完成 13.1a 并验收 |
-| 提交号与学习时长 | 待实际记录 |
+| 当前子步骤 | 13.1 全部完成（13.1a + 13.1b + 13.1c 验收通过） |
+| 实际改动文件 | `agent/run_state.py`（新增 `RUN_RECORD_VERSION`、`RunPhase` 6 阶段枚举、`RunRecord` 及 `__post_init__`/`to_record`/`from_record` 严格校验） |
+| 实际命令与输出 | `13.1a`：`1_ids: run_59456a38cd7b4f81 run_d0a1777f331240b2 \| diff: True`、`2_phases: RUNNING \| CREATED`、`3_timestamps_ok: True`、`4_coexist_ok: IDLE \| phases_count: 6`；<br>`13.1b+c`：`1_independent: True \| phases: WAITING CREATED`、`2_roundtrip_exact: True \| version: 1`、`3_bad_caught: ['missing_run_id', 'missing_session_id', 'invalid_phase', 'missing_created_at']`、`4_blank_blocked: True` |
+| 问题与修复 | 第二轮补全时第 76 行 `@classmethod` 出现短暂缩进错位并漏补 `from typing import Any`、`RUN_RECORD_VERSION = 1` 与 `version` 字段；补齐对齐后一次性全绿通过 |
+| 掌握情况 | 已掌握 `session_id` / `run_id` / `trace_id` 三标识分层、与既有 `SessionState.RunStatus` 边界隔离、以及 `from_record()` 严格校验防止脏数据静默伪造新运行 |
+| 下一步 | 进入 13.2 结构化任务输入（`agent/task.py`） |
+| 提交号与学习时长 | `study(stage-13.1)`；2026-11-27 `16:06 ~ 16:27`（21 分钟） |
 
 ## 13.2 结构化任务输入
 
@@ -160,4 +160,4 @@ V1.0 的 `SessionState` 保存一个会话的消息、摘要与待审批信息�
 
 ## 交给下一次会话
 
-当前从 **13.1a** 开始。后续会话先核对代码和本页实际记录，再继续第一个未通过的子步骤。第一轮的讲解与代码应聚焦 `RunPhase`、`RunRecord` 的职责和字段。
+当前已完成 **13.1**，下一步从 **13.2 结构化任务输入（`agent/task.py`）** 开始。
