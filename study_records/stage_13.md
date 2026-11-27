@@ -1,6 +1,6 @@
 # 阶段 13 学习记录
 
-阶段主题为独立运行记录与结构化任务契约。文档准备于 2026-11-27，当前状态为 **进行中（已完成 13.1、13.2，接续 13.3）**。
+阶段主题为独立运行记录与结构化任务契约。文档准备于 2026-11-27，当前状态为 **进行中（已完成 13.1、13.2、13.3，接续 13.4）**。
 
 ## 目标与全局位置
 
@@ -27,9 +27,9 @@ V1.0 的 `SessionState` 保存一个会话的消息、摘要与待审批信息�
 | 环节 | 主题 | 状态 | 实际提交 |
 | --- | --- | --- | --- |
 | 13.1 | 独立运行记录 | ✅ 已完成 | `2b37e44` |
-| 13.2 | 结构化任务输入 | ✅ 已完成 | `study(stage-13.2)` |
-| 13.3 | 任务结果与产物引用 | ⏳ 待开始，当前接续点 | 待实际完成后填写 |
-| 13.4 | 契约联验与 V1.0 回归 | 待开始 | 待实际完成后填写 |
+| 13.2 | 结构化任务输入 | ✅ 已完成 | `2e1886d` |
+| 13.3 | 任务结果与产物引用 | ✅ 已完成 | `study(stage-13.3)` |
+| 13.4 | 契约联验与 V1.0 回归 | ⏳ 待开始，当前接续点 | 待实际完成后填写 |
 
 ## 13.1 独立运行记录
 
@@ -132,7 +132,14 @@ V1.0 的 `SessionState` 保存一个会话的消息、摘要与待审批信息�
 
 ### 实际记录
 
-状态为待开始。实际文件、命令与输出、问题、掌握情况和提交号在验收后填写。
+| 项目 | 记录 |
+| --- | --- |
+| 实际改动文件 | `agent/result.py`（新增 `TASK_RESULT_VERSION`、`TaskOutcome`、`TaskError`、`ArtifactRef`、`TaskResult` 及防矛盾校验与 `to_record`/`from_record`） |
+| 实际命令与输出 | `1_ok_roundtrip: True \| artifact_kinds: ['file', 'json']`、`2_completed_but_failed: True \| phase/outcome: COMPLETED FAILED \| source: policy`、`3_needs_verify: True \| outcome: NEEDS_VERIFICATION`、`4_contradictions_caught: ['ok_with_error', 'ok_when_phase_failed', 'fail_without_error', 'verify_empty', 'dup_artifact_id']` |
+| 问题与修复 | 无，181 行一次性零报错通过 |
+| 掌握情况 | 已掌握 `RunPhase` 与 `TaskOutcome` 的职责解耦、结构化错误 `source` 溯源、产物提货凭证 `ArtifactRef` 设计及 `@model_validator` 防矛盾状态拦截 |
+| 下一步 | 进入 13.4 契约联验与 V1.0 回归（`tests/test_run_state.py`、`tests/test_task_contracts.py`） |
+| 提交号与学习时长 | `study(stage-13.3)`；2026-11-27 `16:30 ~ 16:41`（11 分钟） |
 
 ## 13.4 契约联验与回归
 
@@ -167,4 +174,4 @@ V1.0 的 `SessionState` 保存一个会话的消息、摘要与待审批信息�
 
 ## 交给下一次会话
 
-当前已完成 **13.1、13.2**，下一步从 **13.3 任务结果与产物引用（`agent/result.py`）** 开始。
+当前已完成 **13.1、13.2、13.3**，下一步从 **13.4 契约联验与 V1.0 回归** 开始。
