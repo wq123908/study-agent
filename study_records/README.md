@@ -5,17 +5,15 @@
 
 ---
 
-## 1. 当前状态快照（随时更新）
+## 1. 当前状态快照
 
-- **当前主线 Git 分支**：`main`（已由 `study/stage-9-12` 晋升为最新主分支并推送至 GitHub，原参考快照保留在 Tag `v0.2.0`）
-- **后续业务实战分支**：`feat/coldchain-agent`（已同步快进至最新 `main`，归档目标岗位 JD、《供应链冷链异常履约与协同 Agent》12 页 PDF 原件、完整 Markdown 转写版及 2026-11-22 路线决策聊天记录；详见 [`./coldchain_agent/README.md`](./coldchain_agent/README.md)）
-- **对照参考标签**：Tag `v0.2.0`（保留早期对照参考快照）
-- **当前已完成**：🏆 **阶段 1 ～ 阶段 12 全部 100% 通关 + Web 对话工作台上线**（通用企业级 AI Agent 底层框架全面闭环：`52 passed` + 12 道黄金评测四项 SLA 100% 达标 + `app/static/index.html` 单页流式对话与 HITL 审批界面）
-- **正在进行**：准备进入**第二步：业务实战篇**
-- **下一个待做环节**：切换至已同步最新底座的 `feat/coldchain-agent` 分支，基于自研底层框架正式落地《供应链冷链异常履约与协同 Agent》（5 张业务表 + 7 大插件 + 条款级 RAG + 7 节点混合控制与 HITL + 40 条冷链黄金评测；详见 [`./coldchain_agent/README.md`](./coldchain_agent/README.md) 与 [`./coldchain_agent/coldchain_agent_sdd.md`](./coldchain_agent/coldchain_agent_sdd.md)）
-- **总体两步走战略**：
-  1. **第一步（当前主线）**：在 `study/stage-9-12` 完整敲完阶段 10～12，让通用 Agent 基层框架 100% 闭环收官（讲解时用大白话，并顺带点明每个模块在后续供应链冷链 Agent 中的业务用法）；
-  2. **第二步（业务分支）**：12 阶段完成后切至 `feat/coldchain-agent` 分支，在基层框架之上落地《供应链冷链异常履约与协同 Agent》（详见 [`./coldchain_agent/README.md`](./coldchain_agent/README.md) 与 [`./coldchain_agent/coldchain_agent_sdd.md`](./coldchain_agent/coldchain_agent_sdd.md)）。
+完整版本路线与 V2.5 最终框架介绍见 [仓库 README](../README.md)。本页记录手写学习进度和接续方式。
+
+- **V1.0 已完成**。阶段 1～12 和 Web 流式对话与审批工作台均已落地。快照为 `codex/v1.0`（`542fa2b`），已有 52 项测试和 12 条离线回放用例。
+- **V2.0 在 `main` 开发**。逐个手写阶段 13～18。接续点是 **13.1 独立运行记录**，当前进度为待开始。V2.0 验收后以 `codex/v2.0` 发布归档。
+- **V2.5 是通用框架的最终目标版本**。在 V2.0 内核之上接入按需能力和共享部署组件。
+- **V3 是仿真业务实战**。使用已验收的 V2.0 内核和首个仿真业务所需的 V2.5 组件。早期业务方向与设计文档见 [冷链实战规划档案](./coldchain_agent/README.md)。
+- **历史参考**。标签 `v0.1.0-basic` 对应基础教学版，`v0.2.0` 保留阶段 9～12 的参考实现。
 
 ---
 
@@ -23,12 +21,12 @@
 
 当你接手本仓库继续带用户学习时，请严格按以下工作流推进：
 
-1. **先读状态再开口**：先读取 [`README.md`](./README.md)、[`curriculum.md`](./curriculum.md) 以及当前阶段记录（如 `stage_09.md`），确认用户已完成了哪一节、卡在什么地方、掌握程度如何。
-2. **坚持教练式带写**（详见 [`../.trae/skills/agent-build-coach/SKILL.md`](../.trae/skills/agent-build-coach/SKILL.md)）：
+1. **先确认学习进度**。读取本页、[仓库 README](../README.md) 和当前阶段的学习记录。[课程大纲](./curriculum.md) 记录阶段 1～12 的教学内容。
+2. **坚持教练式带写**。
    - **不要直接修改业务代码文件**（`agent/`、`app/`、`main.py`、`eval/`、`tests/` 等），除非用户明确说“你直接改”。
    - 代码在对话中给出（标明目标文件路径、完整代码与逐行/关键行解释，不使用 `...` 省略；**多参数定义、构造与调用严格“一个参数占一行”**，单轮代码控制在 60 行以内），由用户亲手敲进编辑器。
-   - **一次只讲一个环节（或一个子步骤）**，严格按顺序：**【全局定位】本模块在整个系统里的位置与上下游串联（大白话垂直流程图）→ 文本图解（复杂状态/流程可辅以交互图解）+ 大白话讲透原理与内部每个方法写法 + 点明冷链 Agent 业务用法 → 说位置 → 给代码 → 给运行命令 → 给明确验收标准 → 停下等用户贴出执行结果**。
-   - `main` 分支（`v0.2.0`）是成品参考；教学时优先引导用户理解并自己实现，遇到排查困难时可参考对照，但不要直接把 `main` 的代码整包复制覆盖练习分支。
+   - **一次只讲一个环节或子步骤**。先定位模块在框架中的位置，再讲原理、文件位置和完整代码，最后给出运行命令与明确验收标准，等用户贴出执行结果。
+   - 以 `codex/v1.0` 和历史标签为对照。教学重点是让用户理解并亲手实现当节模块。
 3. **每个环节验收通过后的固定收尾动作**：
    - 更新对应 `stage_XX.md`：如实记录本环节**学了什么知识点**、**改了哪些文件**、**实际运行输出/验收情况**、**踩过的坑与掌握程度**；
    - 更新 [`curriculum.md`](./curriculum.md) 与本文件顶部的“当前状态快照”；
@@ -45,7 +43,9 @@
 | 阶段 10 | AsyncLLM 流式聚合与 L1/L2/L3 分层记忆 | ✅ 已完成 | [`stage_10.md`](./stage_10.md) | `b6c5b60` ～ `study(stage-10.4)` |
 | 阶段 11 | 异步流式 ReAct 状态机、HITL 审批与 FastAPI SSE | ✅ 已完成 | [`stage_11.md`](./stage_11.md) | `23dcf74` ～ `study(stage-11.4)` |
 | 阶段 12 | 离线单测套件与自动化回归评测流水线 | ✅ 已完成 | [`stage_12.md`](./stage_12.md) | `2cf70ab` ～ `study(stage-12.2)` |
-| **业务实战篇**<br>（`feat/coldchain-agent`） | **供应链冷链异常履约与协同 Agent（ColdChain-Agent）**<br>（5 张业务表 + 7 个插件 + 条款级 RAG + 7 节点混合控制状态机与 HITL + 40 条黄金评测） | 🚀 待启动（底座已 100% 就绪，可随时切分支实施） | [`./coldchain_agent/README.md`](./coldchain_agent/README.md)<br>[`./coldchain_agent/coldchain_agent_sdd.md`](./coldchain_agent/coldchain_agent_sdd.md) | - |
+| 阶段 13～18（V2.0） | 独立运行、通用生命周期、工具策略、Agent 定义与编排、结果评测、接口兼容 | 待开始，接续 13.1 | [V2.0 手写路线](../README.md#v20-手写路线) | - |
+| V2.5 | 通用框架最终版，可选能力组件与共享部署适配 | 已规划 | [V2.5 架构与能力](../README.md#v25-的架构与能力) | - |
+| V3 | 仿真业务实战 | 已规划 | [冷链实战规划档案](./coldchain_agent/README.md) | - |
 
 ---
 
